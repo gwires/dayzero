@@ -77,14 +77,28 @@ async function handle(req: DbRequest): Promise<DbResponse> {
 	}
 }
 
-const ready = openDb().then((conn) => {
-	db = conn;
-	applyMigrations(db);
-	self.postMessage({ id: -1, ok: true, rows: [] } satisfies DbResponse);
-});
+// if opening the database fails (e.g. no OPFS because of an insecure context
+// or an old browser), remember why: the ready promise must still resolve so
+// requests get an error response instead of hanging the client forever.
+let initError: string | undefined;
+
+const ready = openDb()
+	.then((conn) => {
+		db = conn;
+		applyMigrations(db);
+		self.postMessage({ id: -1, ok: true, rows: [] } satisfies DbResponse);
+	})
+	.catch((err: unknown) => {
+		initError = err instanceof Error ? err.message : String(err);
+		self.postMessage({ id: -1, ok: false, error: initError } satisfies DbResponse);
+	});
 
 self.onmessage = async (ev: MessageEvent<DbRequest>) => {
 	await ready;
+	if (initError !== undefined) {
+		self.postMessage({ id: ev.data.id, ok: false, error: initError } satisfies DbResponse);
+		return;
+	}
 	const res = await handle(ev.data);
 	if (res.ok && 'bytes' in res) self.postMessage(res, [res.bytes.buffer]);
 	else self.postMessage(res);

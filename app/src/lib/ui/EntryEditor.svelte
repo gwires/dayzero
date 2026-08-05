@@ -111,6 +111,12 @@
 		}
 	}
 
+	function getPosition(options: PositionOptions): Promise<GeolocationPosition> {
+		return new Promise((resolve, reject) => {
+			navigator.geolocation.getCurrentPosition(resolve, reject, options);
+		});
+	}
+
 	async function useCurrentLocation() {
 		if (!navigator.geolocation) {
 			locationError = 'geolocation is not available in this browser';
@@ -119,12 +125,18 @@
 		locating = true;
 		locationError = undefined;
 		try {
-			const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-				navigator.geolocation.getCurrentPosition(resolve, reject, {
-					enableHighAccuracy: true,
-					timeout: 10000
-				});
-			});
+			let position: GeolocationPosition;
+			try {
+				// a diary entry needs city-level accuracy, so prefer a fast
+				// network fix (or a recent cached one) over waiting on GPS —
+				// a cold GPS fix on phones routinely takes longer than 10s.
+				position = await getPosition({ maximumAge: 60000, timeout: 10000 });
+			} catch (err) {
+				if (err instanceof GeolocationPositionError && err.code === err.PERMISSION_DENIED) {
+					throw err;
+				}
+				position = await getPosition({ enableHighAccuracy: true, timeout: 60000 });
+			}
 			locationLat = position.coords.latitude;
 			locationLng = position.coords.longitude;
 		} catch (err) {

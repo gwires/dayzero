@@ -8,14 +8,19 @@ export class DbClient {
 
 	constructor() {
 		this.worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
-		this.ready = new Promise((resolve) => {
+		this.ready = new Promise((resolve, reject) => {
 			const onReady = (ev: MessageEvent<DbResponse>) => {
-				if (ev.data.id === -1) {
-					this.worker.removeEventListener('message', onReady);
-					resolve();
-				}
+				if (ev.data.id !== -1) return;
+				this.worker.removeEventListener('message', onReady);
+				if (ev.data.ok) resolve();
+				else reject(new Error(`local database failed to open: ${ev.data.error}`));
 			};
 			this.worker.addEventListener('message', onReady);
+			// if the worker script itself fails to load, no ready message ever
+			// arrives — every query would hang without this.
+			this.worker.addEventListener('error', (ev) => {
+				reject(new Error(`db worker failed to start: ${ev.message || 'unknown error'}`));
+			});
 		});
 		this.worker.addEventListener('message', (ev: MessageEvent<DbResponse>) => {
 			const res = ev.data;
