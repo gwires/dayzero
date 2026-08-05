@@ -18,6 +18,9 @@
             pkgs.zls_0_14
             pkgs.nodejs_22
             pkgs.sqlite
+            pkgs.tippecanoe
+            pkgs.pmtiles
+            pkgs.unzip
           ];
         };
       }

@@ -35,12 +35,15 @@
 		"typescript-eslint": "^8.60.1",
 		"vite": "^8.0.16",
 		"vite-plugin-pwa": "^1.3.0",
+		"vite-plugin-static-copy": "^4.1.1",
 		"vitest": "^4.1.8"
 	},
 	"dependencies": {
 		"@sqlite.org/sqlite-wasm": "^3.53.0-build1",
 		"dompurify": "^3.4.13",
+		"maplibre-gl": "^6.1.0",
 		"marked": "^18.0.9",
+		"pmtiles": "^4.4.1",
 		"uuid": "^14.0.1",
 		"yjs": "^13.6.32"
 	}

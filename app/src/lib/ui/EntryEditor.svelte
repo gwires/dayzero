@@ -2,7 +2,9 @@
 	import { marked } from 'marked';
 	import DOMPurify from 'dompurify';
 	import PhotoStrip from './PhotoStrip.svelte';
+	import MapView from './MapView.svelte';
 	import type { PhotoEntry } from '$lib/entries/store';
+	import { getMapTileUrl } from '$lib/settings/store';
 
 	export interface EntryEditPayload {
 		entryDate: string;
@@ -67,6 +69,13 @@
 	let preview = $state(false);
 	let locating = $state(false);
 	let locationError = $state<string | undefined>();
+	let mapTileUrl = $state<string | undefined>();
+
+	$effect(() => {
+		getMapTileUrl().then((url) => {
+			mapTileUrl = url;
+		});
+	});
 
 	const previewHtml = $derived(
 		preview ? DOMPurify.sanitize(marked.parse(markdown, { async: false })) : ''
@@ -204,6 +213,9 @@
 			<p class="error">{locationError}</p>
 		{/if}
 		<input class="location-name" placeholder="place name…" bind:value={locationName} />
+		{#if locationLat != null && locationLng != null}
+			<MapView lat={locationLat} lng={locationLng} tileUrl={mapTileUrl} />
+		{/if}
 	</div>
 
 	{#if onAddPhotos && onRemovePhoto}
