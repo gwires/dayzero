@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
 	import {
+		LngLatBounds,
 		Map as MaplibreMap,
 		Marker,
 		NavigationControl,
@@ -17,18 +18,29 @@
 	// root (via vite-plugin-static-copy).
 	setWorkerUrl('/maplibre-gl-worker.mjs');
 
-	interface Props {
+	export interface MapMarker {
+		id: string;
 		lat: number;
 		lng: number;
+	}
+
+	interface Props {
+		/** single-location mode: centers on lat/lng with a marker (used by the entry editor's locator map). */
+		lat?: number;
+		lng?: number;
+		/** overview mode: plots one marker per entry and fits the view to all of them (used by the map overview page). ignores lat/lng when given. */
+		markers?: MapMarker[];
+		onMarkerClick?: (id: string) => void;
 		/**
 		 * custom raster tile url template (e.g. a self-hosted tileserver or
 		 * osm.org's `{z}/{x}/{y}.png` scheme, from the "map tile url" setting).
 		 * falls back to the bundled offline vector basemap when unset.
 		 */
 		tileUrl?: string | null;
+		class?: string;
 	}
 
-	let { lat, lng, tileUrl }: Props = $props();
+	let { lat, lng, markers, onMarkerClick, tileUrl, class: className = '' }: Props = $props();
 
 	let container: HTMLDivElement;
 	let map: InstanceType<typeof MaplibreMap> | undefined;
@@ -88,15 +100,31 @@
 		protocol = new Protocol();
 		addProtocol('pmtiles', protocol.tile);
 
+		const hasMarkers = markers && markers.length > 0;
 		const instance = new MaplibreMap({
 			container,
 			style: tileUrl ? rasterStyle(tileUrl) : offlineStyle,
-			center: [lng, lat],
-			zoom: tileUrl ? 12 : 6,
+			center: hasMarkers ? [markers![0].lng, markers![0].lat] : [lng ?? 0, lat ?? 0],
+			zoom: hasMarkers ? 2 : tileUrl ? 12 : 6,
 			attributionControl: { compact: true }
 		});
 		instance.addControl(new NavigationControl({ showCompass: false }), 'top-right');
-		new Marker().setLngLat([lng, lat]).addTo(instance);
+
+		if (hasMarkers) {
+			const bounds = new LngLatBounds();
+			for (const m of markers!) {
+				const el = document.createElement('button');
+				el.type = 'button';
+				el.className = 'map-marker-button';
+				el.setAttribute('aria-label', 'open entry');
+				el.onclick = () => onMarkerClick?.(m.id);
+				new Marker({ element: el }).setLngLat([m.lng, m.lat]).addTo(instance);
+				bounds.extend([m.lng, m.lat]);
+			}
+			instance.fitBounds(bounds, { padding: 40, maxZoom: 10, animate: false });
+		} else if (lat != null && lng != null) {
+			new Marker().setLngLat([lng, lat]).addTo(instance);
+		}
 		map = instance;
 	});
 
@@ -106,4 +134,4 @@
 	});
 </script>
 
-<div class="map-view" bind:this={container}></div>
+<div class="map-view {className}" bind:this={container}></div>

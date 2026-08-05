@@ -22,6 +22,7 @@
 		<a href={resolve('/new')}>new</a>
 		<a href={resolve('/tags')}>tags</a>
 		<a href={resolve('/calendar')}>calendar</a>
+		<a href={resolve('/map')}>map</a>
 		<a href={resolve('/settings')}>settings</a>
 	</nav>
 	<main>

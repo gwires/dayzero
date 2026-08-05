@@ -225,6 +225,16 @@ export async function getCurrentStreak(referenceDate: Date = new Date()): Promis
 	);
 }
 
+/** entries with a captured location, for the map overview page. */
+export async function listEntriesWithLocation(): Promise<MaterializedEntry[]> {
+	const db = getDb();
+	return db.select<MaterializedEntry>({
+		sql: `select * from entries
+			where deleted = 0 and location_lat is not null and location_lng is not null
+			order by entry_date desc, updated_at desc`
+	});
+}
+
 export async function listTags(): Promise<{ tag: string; count: number }[]> {
 	const db = getDb();
 	return db.select<{ tag: string; count: number }>({

@@ -40,6 +40,7 @@ config, or rely on nix-direnv / `--extra-experimental-features "nix-command flak
 - `/entry/[id]` view/edit entry
 - `/tags` and `/?tag=...` tag filtering
 - `/calendar` and `/?date=...` month grid of which days have entries; clicking a day filters the timeline to it
+- `/map` overview map — every entry with a captured location plotted as a marker, tapping one opens that entry
 - `/settings` sync server url + token, map tile url, export/import, storage usage
 
 ## entries as CRDTs
@@ -84,7 +85,9 @@ the calendar view is `SELECT DISTINCT entry_date FROM entries WHERE deleted=0 AN
 
 entries with a captured location (`location_lat`/`location_lng`) get a small
 locator map in the entry view, in addition to the existing lat/lng text
-(which stays — the map is additive, not a replacement).
+(which stays — the map is additive, not a replacement). `/map` shows every
+located entry at once, as markers on the same offline basemap; tapping a
+marker opens that entry.
 
 - rendering: `maplibre-gl` (open-source WebGL vector tile renderer, no api key)
 - offline by default: a single bundled `app/static/basemap.pmtiles` file —
@@ -171,7 +174,7 @@ dayzero/
 3. **photos & location**: attachment pipeline (resize → webp → blob), photo strip in entries; location capture
 4. **on this day**: query + home screen strip
 5. **calendar & streaks**: `/calendar` month grid keyed off `entry_date`, `/?date=...` day filtering, current-streak counter on the home screen
-6. **map**: `scripts/build-basemap.sh` + committed `basemap.pmtiles`, `maplibre-gl` locator map on entries with a location, custom map tile url setting
+6. **map**: `scripts/build-basemap.sh` + committed `basemap.pmtiles`, `maplibre-gl` locator map on entries with a location, `/map` overview of all located entries, custom map tile url setting
 7. **server**: schema, token auth, `/api/changes` push/pull, blob endpoints, tests
 8. **sync engine**: outbox + cursor pull on the client, settings screen for server url/token, convergence tests (two simulated devices editing the same entry offline)
 9. **polish**: export/import (single sqlite file or zip of markdown+photos), pwa icons/manifest, empty states, lighthouse pass

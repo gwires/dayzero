@@ -359,6 +359,25 @@ nav a:hover {
 	overflow: hidden;
 }
 
+.map-view.map-view-overview {
+	height: 70vh;
+}
+
+.map-marker-button {
+	width: 1rem;
+	height: 1rem;
+	padding: 0;
+	border: 2px solid #fff;
+	border-radius: 50%;
+	background: #c0392b;
+	box-shadow: 0 0 0 1px rgb(0 0 0 / 30%);
+	cursor: pointer;
+}
+
+.map-marker-button:hover {
+	background: #e74c3c;
+}
+
 .streak {
 	margin-bottom: 1rem;
 	font-size: 0.9rem;
