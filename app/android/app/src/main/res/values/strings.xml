@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">dayzero</string>
+    <string name="title_activity_main">dayzero</string>
+    <string name="package_name">nl.defekt.dayzero</string>
+    <string name="custom_url_scheme">nl.defekt.dayzero</string>
+</resources>

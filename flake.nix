@@ -17,8 +17,8 @@
           };
         };
         androidSdk = (pkgs.androidenv.composeAndroidPackages {
-          platformVersions = [ "35" ];
-          buildToolsVersions = [ "35.0.0" ];
+          platformVersions = [ "36" ];
+          buildToolsVersions = [ "36.0.0" ];
           includeEmulator = false;
           includeNDK = false;
         }).androidsdk;
@@ -41,7 +41,7 @@
           shellHook = ''
             export ANDROID_HOME=${androidSdk}/libexec/android-sdk
             export ANDROID_SDK_ROOT=$ANDROID_HOME
-            export GRADLE_OPTS="-Dorg.gradle.project.android.aapt2FromMavenOverride=$ANDROID_HOME/build-tools/35.0.0/aapt2"
+            export GRADLE_OPTS="-Dorg.gradle.project.android.aapt2FromMavenOverride=$ANDROID_HOME/build-tools/36.0.0/aapt2"
           '';
         };
       }

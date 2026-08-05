@@ -10,6 +10,11 @@ const gitignorePath = path.resolve(import.meta.dirname, '.gitignore');
 
 export default defineConfig(
 	includeIgnoreFile(gitignorePath),
+	{
+		// generated Gradle project + bundled web assets copied in by `cap sync`,
+		// not hand-written source
+		ignores: ['android/']
+	},
 	js.configs.recommended,
 	ts.configs.recommended,
 	svelte.configs.recommended,

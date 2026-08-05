@@ -7,3 +7,6 @@ bun.lockb
 
 # Miscellaneous
 /static/
+
+# Generated Gradle project + bundled web assets copied in by `cap sync`
+/android/
