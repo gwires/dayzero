@@ -4,7 +4,7 @@ pub const Config = struct {
     port: u16,
     address: []const u8,
     db_path: []const u8,
-    auth_token: ?[]const u8,
+    auth_token: []const u8,
 
     pub fn fromEnv(allocator: std.mem.Allocator) !Config {
         const port_str = std.process.getEnvVarOwned(allocator, "DAYZERO_PORT") catch |err| switch (err) {
@@ -24,10 +24,16 @@ pub const Config = struct {
             else => return err,
         };
 
+        // required: an unauthenticated sync server would let anyone read or
+        // overwrite the diary, so there's no "open" default to fall back to.
         const auth_token = std.process.getEnvVarOwned(allocator, "DAYZERO_AUTH_TOKEN") catch |err| switch (err) {
-            error.EnvironmentVariableNotFound => null,
+            error.EnvironmentVariableNotFound => return error.MissingAuthToken,
             else => return err,
         };
+        if (auth_token.len == 0) {
+            allocator.free(auth_token);
+            return error.EmptyAuthToken;
+        }
 
         return .{
             .port = port,
@@ -40,6 +46,6 @@ pub const Config = struct {
     pub fn deinit(self: Config, allocator: std.mem.Allocator) void {
         allocator.free(self.address);
         allocator.free(self.db_path);
-        if (self.auth_token) |t| allocator.free(t);
+        allocator.free(self.auth_token);
     }
 };

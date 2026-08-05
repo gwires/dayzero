@@ -150,10 +150,11 @@ updates(seq INTEGER PRIMARY KEY AUTOINCREMENT, entry_id TEXT, update BLOB, recei
 blobs(id TEXT PRIMARY KEY, bytes BLOB)   -- id = sha-256, verified on upload
 ```
 
-- endpoints: the sync api above + `GET /api/health`
-- config: env vars or a tiny config file (port, db path, auth token)
+- endpoints: the sync api above + `GET /api/health` — see `docs/protocol.md` for the full wire contract
+- config: env vars (port, address, db path, auth token). `DAYZERO_AUTH_TOKEN` is required — the server refuses to start without one, since there's no safe "open" default for a sync endpoint
 - also serves the built PWA as static files (optional but convenient: one binary = whole app)
-- `zig build test` for unit tests; an end-to-end shell script that starts the server and syncs two throwaway client databases through it
+- `zig build test` for unit tests (handlers are tested directly via `httpz.testing`, no real socket); `server/test-integration.sh` starts a real instance and exercises the protocol over HTTP with curl (push, pull, blob round-trip, auth rejection). Milestone 8 adds an end-to-end shell script on top of that, which syncs two throwaway client databases through a real server to assert convergence
+- gotcha: `zig build test`'s root module (`main.zig`) only discovers `test` blocks in files it actually analyzes — merely `@import`ing and calling into `config.zig`/`db.zig`/`api.zig` from `main()` isn't enough, since `main()` itself never runs during a test build. `main.zig` has a `test { std.testing.refAllDecls(@This()); }` block to force those files (and their tests) to be analyzed; without it `zig build test` silently reports success having run zero tests
 
 ## repo layout
 
@@ -171,6 +172,7 @@ dayzero/
   server/
     build.zig  build.zig.zon
     src/main.zig  src/config.zig  src/db.zig  src/api.zig
+    test-integration.sh   # curl-based protocol test against a real running instance
   scripts/
     build-basemap.sh  README.md   # rebuilds app/static/basemap.pmtiles
   docs/protocol.md   # the sync protocol, kept in lockstep with both implementations
@@ -184,7 +186,7 @@ dayzero/
 4. **on this day**: query + home screen strip
 5. **calendar & streaks**: `/calendar` month grid keyed off `entry_date`, `/?date=...` day filtering, current-streak counter on the home screen
 6. **map**: `scripts/build-basemap.sh` + committed `basemap.pmtiles`, `maplibre-gl` locator map on entries with a location, `/map` overview of all located entries, custom map tile url setting, labeled city names via `scripts/build-glyphs.sh` + committed `glyphs/dejavu-sans/0-255.pbf`
-7. **server**: schema, token auth, `/api/changes` push/pull, blob endpoints, tests
+7. **server**: `updates`/`blobs` schema, required bearer-token auth, `/api/changes` push/pull (base64-wrapped updates, cursor pagination), `/api/blobs/<sha256>` put/get (content-addressed, hash-verified), `docs/protocol.md`, `zig build test` unit tests + `server/test-integration.sh` curl-based protocol test
 8. **sync engine**: outbox + cursor pull on the client, settings screen for server url/token, convergence tests (two simulated devices editing the same entry offline)
 9. **polish**: export/import (single sqlite file or zip of markdown+photos), pwa icons/manifest, empty states, lighthouse pass
 

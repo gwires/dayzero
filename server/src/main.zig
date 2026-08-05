@@ -10,7 +10,16 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    const cfg = try config.Config.fromEnv(allocator);
+    const cfg = config.Config.fromEnv(allocator) catch |err| {
+        switch (err) {
+            error.MissingAuthToken, error.EmptyAuthToken => std.log.err(
+                "DAYZERO_AUTH_TOKEN must be set to a non-empty bearer token",
+                .{},
+            ),
+            else => {},
+        }
+        return err;
+    };
     defer cfg.deinit(allocator);
 
     const db_path = try allocator.dupeZ(u8, cfg.db_path);
@@ -18,7 +27,7 @@ pub fn main() !void {
     const conn = try db.open(db_path);
     defer conn.close();
 
-    var handler = api.Handler{ .db = conn };
+    var handler = api.Handler{ .db = conn, .auth_token = cfg.auth_token };
 
     var server = try httpz.Server(*api.Handler).init(
         allocator,
@@ -33,4 +42,13 @@ pub fn main() !void {
 
     std.log.info("dayzero-server listening on http://{s}:{d} (db: {s})", .{ cfg.address, cfg.port, cfg.db_path });
     try server.listen();
+}
+
+test {
+    // `zig build test` only discovers tests reachable through analyzed
+    // declarations; a plain `@import` that's merely called from `main` isn't
+    // enough, since main() itself is never analyzed during a test build.
+    // `refAllDecls` forces every imported module (and transitively, its
+    // "test" blocks) to be analyzed too.
+    std.testing.refAllDecls(@This());
 }
