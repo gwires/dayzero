@@ -1,9 +1,10 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
-	import { listEntries, type MaterializedEntry } from '$lib/entries/store';
+	import { listEntries, listOnThisDay, type MaterializedEntry } from '$lib/entries/store';
 
 	let entries = $state<MaterializedEntry[]>([]);
+	let onThisDay = $state<MaterializedEntry[]>([]);
 	let loading = $state(true);
 	let error = $state<string | undefined>();
 
@@ -14,6 +15,7 @@
 		error = undefined;
 		try {
 			entries = await listEntries({ tag: currentTag });
+			onThisDay = currentTag ? [] : await listOnThisDay();
 		} catch (err) {
 			error = err instanceof Error ? err.message : String(err);
 		} finally {
@@ -24,6 +26,10 @@
 	$effect(() => {
 		load(tag);
 	});
+
+	function entryYear(entry: MaterializedEntry): string {
+		return entry.entry_date?.slice(0, 4) ?? '';
+	}
 
 	interface DayGroup {
 		day: string;
@@ -58,17 +64,33 @@
 	<p>loading…</p>
 {:else if error}
 	<p class="error">{error}</p>
-{:else if entries.length === 0}
-	<p>no entries yet. <a href={resolve('/new')}>write your first one</a>.</p>
 {:else}
-	{#each grouped as { day, entries: dayEntries } (day)}
-		<section class="day-group">
-			<h2>{day}</h2>
-			{#each dayEntries as entry (entry.id)}
-				<a class="entry-card" href={resolve('/entry/[id]', { id: entry.id })}>
-					<p class="entry-preview">{entry.markdown.trim().slice(0, 140) || '(empty entry)'}</p>
-				</a>
-			{/each}
+	{#if onThisDay.length > 0}
+		<section class="on-this-day">
+			<h2>on this day</h2>
+			<div class="on-this-day-strip">
+				{#each onThisDay as entry (entry.id)}
+					<a class="entry-card on-this-day-card" href={resolve('/entry/[id]', { id: entry.id })}>
+						<p class="on-this-day-year">{entryYear(entry)}</p>
+						<p class="entry-preview">{entry.markdown.trim().slice(0, 100) || '(empty entry)'}</p>
+					</a>
+				{/each}
+			</div>
 		</section>
-	{/each}
+	{/if}
+
+	{#if entries.length === 0}
+		<p>no entries yet. <a href={resolve('/new')}>write your first one</a>.</p>
+	{:else}
+		{#each grouped as { day, entries: dayEntries } (day)}
+			<section class="day-group">
+				<h2>{day}</h2>
+				{#each dayEntries as entry (entry.id)}
+					<a class="entry-card" href={resolve('/entry/[id]', { id: entry.id })}>
+						<p class="entry-preview">{entry.markdown.trim().slice(0, 140) || '(empty entry)'}</p>
+					</a>
+				{/each}
+			</section>
+		{/each}
+	{/if}
 {/if}

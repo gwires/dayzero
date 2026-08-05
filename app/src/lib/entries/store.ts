@@ -167,6 +167,26 @@ export async function listEntries(opts: { tag?: string } = {}): Promise<Material
 	});
 }
 
+/**
+ * entries from the same month/day in earlier years. see PLAN.md
+ * "\"on this day\" is just: WHERE deleted=0 AND strftime('%m-%d', entry_date)
+ * = strftime('%m-%d', 'now') AND entry_date < date('now')".
+ */
+export async function listOnThisDay(
+	referenceDate: Date = new Date()
+): Promise<MaterializedEntry[]> {
+	const db = getDb();
+	const today = referenceDate.toISOString().slice(0, 10);
+	return db.select<MaterializedEntry>({
+		sql: `select * from entries
+			where deleted = 0
+				and strftime('%m-%d', entry_date) = strftime('%m-%d', ?)
+				and entry_date < ?
+			order by entry_date desc`,
+		params: [today, today]
+	});
+}
+
 export async function listTags(): Promise<{ tag: string; count: number }[]> {
 	const db = getDb();
 	return db.select<{ tag: string; count: number }>({
