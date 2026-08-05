@@ -18,6 +18,8 @@ config, or rely on nix-direnv / `--extra-experimental-features "nix-command flak
 - tags (freeform, autocomplete from existing tags, filter timeline by tag)
 - location per entry (geolocation api for coords + free-text place name; no online reverse geocoding in v1 so it stays offline-friendly)
 - "on this day": entries from the same month/day in earlier years, shown on the home screen
+- calendar view: a month grid showing which days have entries; clicking a day shows that day's entries
+- current streak: consecutive days with at least one entry, shown on the home screen
 - multi-device sync via the zig server; export/import of the whole journal
 
 ## client (`app/`)
@@ -31,10 +33,11 @@ config, or rely on nix-direnv / `--extra-experimental-features "nix-command flak
 
 ### routes
 
-- `/` timeline, newest first, grouped by day, with an "on this day" strip at the top
+- `/` timeline, newest first, grouped by day, with an "on this day" strip and the current streak at the top
 - `/new` new entry
 - `/entry/[id]` view/edit entry
 - `/tags` and `/?tag=...` tag filtering
+- `/calendar` and `/?date=...` month grid of which days have entries; clicking a day filters the timeline to it
 - `/settings` sync server url + token, export/import, storage usage
 
 ## entries as CRDTs
@@ -72,6 +75,8 @@ sync_state(key TEXT PRIMARY KEY, value TEXT)        -- device id, server cursor
 ```
 
 "on this day" is just: `WHERE deleted=0 AND strftime('%m-%d', entry_date) = strftime('%m-%d', 'now') AND entry_date < date('now')`.
+
+the calendar view is `SELECT DISTINCT entry_date FROM entries WHERE deleted=0 AND strftime('%Y-%m', entry_date) = ?` for the visible month, rendered as a grid with entry-having days marked; clicking a day is just `/?date=<entry_date>` (same pattern as `?tag=...`). the current streak is computed client-side from the distinct, sorted `entry_date` values already in `entries`: walk backwards day-by-day from today (or yesterday, if nothing is logged yet today) while a matching `entry_date` exists, counting as you go — pure function, no new sql needed.
 
 ## sync
 
@@ -129,13 +134,15 @@ dayzero/
 2. **local storage**: sqlite-wasm worker + migrations; Y.Doc-per-entry with snapshot persistence and materialization; timeline and entry editor working fully offline (markdown + tags)
 3. **photos & location**: attachment pipeline (resize → webp → blob), photo strip in entries; location capture
 4. **on this day**: query + home screen strip
-5. **server**: schema, token auth, `/api/changes` push/pull, blob endpoints, tests
-6. **sync engine**: outbox + cursor pull on the client, settings screen for server url/token, convergence tests (two simulated devices editing the same entry offline)
-7. **polish**: export/import (single sqlite file or zip of markdown+photos), pwa icons/manifest, empty states, lighthouse pass
+5. **calendar & streaks**: `/calendar` month grid keyed off `entry_date`, `/?date=...` day filtering, current-streak counter on the home screen
+6. **server**: schema, token auth, `/api/changes` push/pull, blob endpoints, tests
+7. **sync engine**: outbox + cursor pull on the client, settings screen for server url/token, convergence tests (two simulated devices editing the same entry offline)
+8. **polish**: export/import (single sqlite file or zip of markdown+photos), pwa icons/manifest, empty states, lighthouse pass
 
 ## verification
 
 - `app`: vitest for the materializer and sync engine — in particular: two Y.Docs diverge offline, exchange updates in both orders, assert identical text/tags/meta and identical materialized rows
+- `app`: vitest for the streak calculation — given a set of entry dates, assert the correct current-streak count, including gaps, an unbroken streak, and today vs. yesterday as the streak's anchor
 - `server`: `zig build test`; curl-based integration script (push updates, pull from zero cursor, blob round-trip, auth rejection)
 - end-to-end: script that starts the server and runs the vitest sync harness against it with two simulated devices, asserting convergence after concurrent edits
 
