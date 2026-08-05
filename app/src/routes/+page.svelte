@@ -1,21 +1,31 @@
 <script lang="ts">
 	import { page } from '$app/state';
 	import { resolve } from '$app/paths';
-	import { listEntries, listOnThisDay, type MaterializedEntry } from '$lib/entries/store';
+	import {
+		getCurrentStreak,
+		listEntries,
+		listOnThisDay,
+		type MaterializedEntry
+	} from '$lib/entries/store';
 
 	let entries = $state<MaterializedEntry[]>([]);
 	let onThisDay = $state<MaterializedEntry[]>([]);
+	let streak = $state(0);
 	let loading = $state(true);
 	let error = $state<string | undefined>();
 
 	const tag = $derived(page.url.searchParams.get('tag') ?? undefined);
+	const date = $derived(page.url.searchParams.get('date') ?? undefined);
+	const filtered = $derived(Boolean(tag || date));
 
-	async function load(currentTag: string | undefined) {
+	async function load(currentTag: string | undefined, currentDate: string | undefined) {
 		loading = true;
 		error = undefined;
 		try {
-			entries = await listEntries({ tag: currentTag });
-			onThisDay = currentTag ? [] : await listOnThisDay();
+			entries = await listEntries({ tag: currentTag, date: currentDate });
+			const isFiltered = Boolean(currentTag || currentDate);
+			onThisDay = isFiltered ? [] : await listOnThisDay();
+			streak = isFiltered ? 0 : await getCurrentStreak();
 		} catch (err) {
 			error = err instanceof Error ? err.message : String(err);
 		} finally {
@@ -24,7 +34,7 @@
 	}
 
 	$effect(() => {
-		load(tag);
+		load(tag, date);
 	});
 
 	function entryYear(entry: MaterializedEntry): string {
@@ -58,6 +68,10 @@
 	<p class="filter-banner">
 		filtering by <strong>#{tag}</strong> — <a href={resolve('/')}>clear</a>
 	</p>
+{:else if date}
+	<p class="filter-banner">
+		showing entries from <strong>{date}</strong> — <a href={resolve('/')}>clear</a>
+	</p>
 {/if}
 
 {#if loading}
@@ -65,6 +79,12 @@
 {:else if error}
 	<p class="error">{error}</p>
 {:else}
+	{#if !filtered && streak > 0}
+		<p class="streak">
+			current streak: <strong>{streak} day{streak === 1 ? '' : 's'}</strong>
+		</p>
+	{/if}
+
 	{#if onThisDay.length > 0}
 		<section class="on-this-day">
 			<h2>on this day</h2>

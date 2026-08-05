@@ -4,6 +4,7 @@ import { getDb } from '$lib/db/client';
 import { getMeta, getPhotos, getTags, getText } from './ydoc';
 import { materialize, type MaterializedEntry } from './materialize';
 import { encodePhoto } from './photos';
+import { computeStreak } from './streak';
 
 /** captures the single update produced by a doc mutation, for the outbox. */
 function captureUpdate(doc: Y.Doc, mutate: (doc: Y.Doc) => void): Uint8Array {
@@ -151,8 +152,18 @@ export async function deleteEntry(id: string, doc: Y.Doc): Promise<void> {
 	});
 }
 
-export async function listEntries(opts: { tag?: string } = {}): Promise<MaterializedEntry[]> {
+export async function listEntries(
+	opts: { tag?: string; date?: string } = {}
+): Promise<MaterializedEntry[]> {
 	const db = getDb();
+	if (opts.date) {
+		return db.select<MaterializedEntry>({
+			sql: `select * from entries
+				where deleted = 0 and entry_date = ?
+				order by updated_at desc`,
+			params: [opts.date]
+		});
+	}
 	if (opts.tag) {
 		return db.select<MaterializedEntry>({
 			sql: `select e.* from entries e
@@ -185,6 +196,33 @@ export async function listOnThisDay(
 			order by entry_date desc`,
 		params: [today, today]
 	});
+}
+
+/** which days in a given month (1-12) have at least one entry, for the calendar view. */
+export async function listEntryDatesInMonth(
+	year: number,
+	month: number
+): Promise<{ date: string; count: number }[]> {
+	const db = getDb();
+	const monthStr = `${year}-${String(month).padStart(2, '0')}`;
+	return db.select<{ date: string; count: number }>({
+		sql: `select entry_date as date, count(*) as count from entries
+			where deleted = 0 and strftime('%Y-%m', entry_date) = ?
+			group by entry_date`,
+		params: [monthStr]
+	});
+}
+
+/** consecutive days with at least one entry, ending today (or yesterday). */
+export async function getCurrentStreak(referenceDate: Date = new Date()): Promise<number> {
+	const db = getDb();
+	const rows = await db.select<{ entry_date: string }>({
+		sql: `select distinct entry_date from entries where deleted = 0 and entry_date is not null`
+	});
+	return computeStreak(
+		rows.map((row) => row.entry_date),
+		referenceDate
+	);
 }
 
 export async function listTags(): Promise<{ tag: string; count: number }[]> {
