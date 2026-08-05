@@ -1,17 +1,20 @@
 /// <reference lib="webworker" />
 import sqlite3InitModule from '@sqlite.org/sqlite-wasm';
-import type { Database } from '@sqlite.org/sqlite-wasm';
+import type { Database, SAHPoolUtil } from '@sqlite.org/sqlite-wasm';
 import { migrations } from './migrations';
 import type { DbRequest, DbResponse, SqlValue, Statement } from './rpc';
 
 declare const self: DedicatedWorkerGlobalScope;
 
+const DB_FILENAME = '/dayzero.sqlite';
+
 let db: Database;
+let pool: SAHPoolUtil;
 
 async function openDb(): Promise<Database> {
 	const sqlite3 = await sqlite3InitModule();
-	const poolUtil = await sqlite3.installOpfsSAHPoolVfs({ name: 'dayzero-opfs' });
-	return new poolUtil.OpfsSAHPoolDb('/dayzero.sqlite');
+	pool = await sqlite3.installOpfsSAHPoolVfs({ name: 'dayzero-opfs' });
+	return new pool.OpfsSAHPoolDb(DB_FILENAME);
 }
 
 function applyMigrations(conn: Database) {
@@ -49,6 +52,25 @@ async function handle(req: DbRequest): Promise<DbResponse> {
 				const rows = runStatement(req.stmt);
 				return { id: req.id, ok: true, rows };
 			}
+			case 'exportDb': {
+				// copy into a fresh, exactly-sized buffer so the caller can
+				// safely transfer it (rather than structured-cloning a
+				// potentially large sqlite file across the worker boundary).
+				const bytes = new Uint8Array(await pool.exportFile(DB_FILENAME));
+				return { id: req.id, ok: true, bytes };
+			}
+			case 'importDb': {
+				// the SAH pool VFS manages this file across several handles
+				// internally, so a live `Database` can't just be pointed at
+				// new bytes — close it, let the pool overwrite the file, then
+				// reopen and bring it up to the current schema version (the
+				// imported file may be an older export).
+				db.close();
+				await pool.importDb(DB_FILENAME, req.bytes);
+				db = new pool.OpfsSAHPoolDb(DB_FILENAME);
+				applyMigrations(db);
+				return { id: req.id, ok: true, rows: [] };
+			}
 		}
 	} catch (err) {
 		return { id: req.id, ok: false, error: err instanceof Error ? err.message : String(err) };
@@ -64,5 +86,6 @@ const ready = openDb().then((conn) => {
 self.onmessage = async (ev: MessageEvent<DbRequest>) => {
 	await ready;
 	const res = await handle(ev.data);
-	self.postMessage(res);
+	if (res.ok && 'bytes' in res) self.postMessage(res, [res.bytes.buffer]);
+	else self.postMessage(res);
 };

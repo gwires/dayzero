@@ -8,6 +8,7 @@
 		setSyncToken
 	} from '$lib/settings/store';
 	import { syncOnce } from '$lib/sync/engine';
+	import { exportBackup, importBackup } from '$lib/settings/backup';
 
 	let mapTileUrl = $state('');
 	let saved = $state(false);
@@ -18,6 +19,11 @@
 	let syncStatus = $state<'idle' | 'syncing' | 'ok' | 'error'>('idle');
 	let syncError = $state('');
 
+	let exporting = $state(false);
+	let importing = $state(false);
+	let importError = $state('');
+	let storageUsage = $state<{ usageBytes: number; quotaBytes: number } | undefined>();
+
 	$effect(() => {
 		getMapTileUrl().then((url) => {
 			mapTileUrl = url ?? '';
@@ -26,7 +32,46 @@
 			syncServerUrl = url ?? '';
 			syncToken = token ?? '';
 		});
+		navigator.storage?.estimate().then((estimate) => {
+			if (estimate.usage != null && estimate.quota != null) {
+				storageUsage = { usageBytes: estimate.usage, quotaBytes: estimate.quota };
+			}
+		});
 	});
+
+	function formatBytes(bytes: number): string {
+		const mb = bytes / (1024 * 1024);
+		return mb >= 1 ? `${mb.toFixed(1)} MB` : `${(bytes / 1024).toFixed(0)} KB`;
+	}
+
+	async function handleExport() {
+		exporting = true;
+		try {
+			await exportBackup();
+		} finally {
+			exporting = false;
+		}
+	}
+
+	async function handleImportChange(ev: Event) {
+		const input = ev.currentTarget as HTMLInputElement;
+		const file = input.files?.[0];
+		input.value = '';
+		if (!file) return;
+		const confirmed = confirm(
+			'importing replaces all data on this device with the contents of this backup file. anything created or changed on this device since its last sync will be lost. continue?'
+		);
+		if (!confirmed) return;
+		importing = true;
+		importError = '';
+		try {
+			await importBackup(file);
+			location.reload();
+		} catch (err) {
+			importError = err instanceof Error ? err.message : String(err);
+			importing = false;
+		}
+	}
 
 	async function save() {
 		await setMapTileUrl(mapTileUrl.trim() || undefined);
@@ -110,4 +155,36 @@
 	{#if syncStatus === 'error'}<p class="error">sync failed: {syncError}</p>{/if}
 </section>
 
-<p>export/import, storage usage: coming soon.</p>
+<section class="field">
+	<h2>backup</h2>
+	<p class="filter-banner">
+		export downloads the entire journal — entries, tags, photos, and these settings — as a single
+		sqlite file. import replaces everything on this device with a previously exported file.
+	</p>
+	<button type="button" onclick={handleExport} disabled={exporting}>
+		{exporting ? 'exporting…' : 'export backup'}
+	</button>
+	<label class="import-label">
+		import backup
+		<input
+			type="file"
+			accept=".sqlite,application/x-sqlite3"
+			disabled={importing}
+			onchange={handleImportChange}
+		/>
+	</label>
+	{#if importing}<p class="filter-banner">importing…</p>{/if}
+	{#if importError}<p class="error">import failed: {importError}</p>{/if}
+</section>
+
+<section class="field">
+	<h2>storage</h2>
+	{#if storageUsage}
+		<p class="filter-banner">
+			using {formatBytes(storageUsage.usageBytes)} of {formatBytes(storageUsage.quotaBytes)} available
+			to this browser.
+		</p>
+	{:else}
+		<p class="filter-banner">storage usage isn't available in this browser.</p>
+	{/if}
+</section>

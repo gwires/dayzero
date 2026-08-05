@@ -100,7 +100,11 @@
 	{/if}
 
 	{#if entries.length === 0}
-		<p>no entries yet. <a href={resolve('/new')}>write your first one</a>.</p>
+		{#if filtered}
+			<p>no entries match this filter.</p>
+		{:else}
+			<p>no entries yet. <a href={resolve('/new')}>write your first one</a>.</p>
+		{/if}
 	{:else}
 		{#each grouped as { day, entries: dayEntries } (day)}
 			<section class="day-group">

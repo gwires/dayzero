@@ -116,6 +116,20 @@ nav a:hover {
 	gap: 0.25rem;
 	font-size: 0.85rem;
 	opacity: 0.85;
+	margin-bottom: 1.5rem;
+}
+
+.field h2 {
+	margin: 0 0 0.25rem;
+	font-size: 1rem;
+	opacity: 1;
+}
+
+.import-label {
+	display: inline-flex;
+	flex-direction: column;
+	gap: 0.25rem;
+	align-self: flex-start;
 }
 
 .editor-toolbar {
