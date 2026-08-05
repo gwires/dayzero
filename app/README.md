@@ -1,42 +1,19 @@
-# sv
+# dayzero app
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
-
-## Creating a project
-
-If you're seeing this, you've probably already done this step. Congrats!
+The SvelteKit PWA frontend for dayzero. See the [repo root README](../README.md)
+for prerequisites, the dev shell, and an overview of the whole project.
 
 ```sh
-# create a new project
-npx sv create my-app
-```
-
-To recreate this project with the same configuration:
-
-```sh
-# recreate this project
-npx sv@0.17.0 create --template minimal --types ts --add prettier eslint vitest="usages:unit" sveltekit-adapter="adapter:static" --install npm app
-```
-
-## Developing
-
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
-
-```sh
-npm run dev
-
-# or start the server and open the app in a new browser tab
+npm install
 npm run dev -- --open
 ```
 
-## Building
-
-To create a production version of your app:
-
-```sh
-npm run build
-```
-
-You can preview the production build with `npm run preview`.
-
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+| command             | what it does                                     |
+| ------------------- | ------------------------------------------------- |
+| `npm run build`     | production build (static files in `build/`)        |
+| `npm run preview`   | serve the production build locally                 |
+| `npm run check`     | svelte-check (types + Svelte diagnostics)           |
+| `npm run lint`      | prettier --check + eslint                           |
+| `npm run format`    | prettier --write                                    |
+| `npm run test`      | vitest, single run                                  |
+| `npm run test:unit` | vitest in watch mode                                |
