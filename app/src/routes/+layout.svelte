@@ -2,13 +2,21 @@
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
 	import favicon from '$lib/assets/favicon.svg';
+	import { initSyncEngine } from '$lib/sync/engine';
 	import '../app.css';
 
 	let { children } = $props();
 
-	onMount(async () => {
-		const { useRegisterSW } = await import('virtual:pwa-register/svelte');
-		useRegisterSW({ immediate: true });
+	onMount(() => {
+		// fire-and-forget: onMount only honors a *synchronously* returned
+		// cleanup function, so the async SW registration can't itself be the
+		// mount callback if initSyncEngine's cleanup is also going to be returned.
+		void (async () => {
+			const { useRegisterSW } = await import('virtual:pwa-register/svelte');
+			useRegisterSW({ immediate: true });
+		})();
+
+		return initSyncEngine();
 	});
 </script>
 

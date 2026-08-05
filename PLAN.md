@@ -137,6 +137,8 @@ a dumb, durable relay.
 - deletion = `meta.deleted = true` tombstone inside the doc, so it propagates like any edit
 - compaction (later, optional): a client may post a merged snapshot update and the server can drop that entry's older updates once all known devices' cursors have passed them. not needed for v1 — diary entries are small and the log is cheap
 - v1 auth: single user, one long random bearer token in the server config. TLS is left to a reverse proxy (caddy/nginx). end-to-end encryption is a natural v2 here (the server already treats updates as opaque bytes — encrypting them client-side wouldn't change the protocol at all), but out of scope for now
+- client implementation (`app/src/lib/sync/`): `api.ts` (fetch wrapper matching `docs/protocol.md`, base64 (de)coding), `outbox.ts` (read/delete queued updates by rowid), `blobs.ts` (push un-pushed attachments, fetch attachments newly referenced by pulled docs), `engine.ts` (`syncOnce()` = pull-then-push; `initSyncEngine()` wires start/`online`/debounced-after-write). `entries/store.ts` gained `applyRemoteUpdate` (applies a pulled update and re-materializes *without* re-queuing it to the outbox) and a `sync/notify.ts` pub/sub so a local write can trigger a debounced sync without `entries/store.ts` importing the sync engine (avoiding a circular import)
+- the sync server needs CORS (`Access-Control-Allow-Origin`, handling the browser's `OPTIONS` preflight) since it's a separate origin from the PWA — httpz ships a `middleware.Cors` for exactly this, registered once as a server-wide middleware in `main.zig`
 
 ## server (`server/`)
 
@@ -153,7 +155,8 @@ blobs(id TEXT PRIMARY KEY, bytes BLOB)   -- id = sha-256, verified on upload
 - endpoints: the sync api above + `GET /api/health` — see `docs/protocol.md` for the full wire contract
 - config: env vars (port, address, db path, auth token). `DAYZERO_AUTH_TOKEN` is required — the server refuses to start without one, since there's no safe "open" default for a sync endpoint
 - also serves the built PWA as static files (optional but convenient: one binary = whole app)
-- `zig build test` for unit tests (handlers are tested directly via `httpz.testing`, no real socket); `server/test-integration.sh` starts a real instance and exercises the protocol over HTTP with curl (push, pull, blob round-trip, auth rejection). Milestone 8 adds an end-to-end shell script on top of that, which syncs two throwaway client databases through a real server to assert convergence
+- `zig build test` for unit tests (handlers are tested directly via `httpz.testing`, no real socket); `server/test-integration.sh` starts a real instance and exercises the protocol over HTTP with curl (push, pull, blob round-trip, auth rejection). `server/test-e2e-sync.sh` builds on that: starts a real instance and runs the client's vitest sync harness against it, simulating two devices (as plain `Y.Doc`s, not full client sqlite databases — that needs a browser) to assert convergence after concurrent edits
+- needs CORS (see "sync") since the PWA calls it cross-origin — httpz's `middleware.Cors`, registered server-wide in `main.zig`'s `server.router(...)` call
 - gotcha: `zig build test`'s root module (`main.zig`) only discovers `test` blocks in files it actually analyzes — merely `@import`ing and calling into `config.zig`/`db.zig`/`api.zig` from `main()` isn't enough, since `main()` itself never runs during a test build. `main.zig` has a `test { std.testing.refAllDecls(@This()); }` block to force those files (and their tests) to be analyzed; without it `zig build test` silently reports success having run zero tests
 
 ## repo layout
@@ -165,7 +168,7 @@ dayzero/
   app/            # sveltekit pwa
     src/lib/db/       # worker, schema, migrations, typed rpc
     src/lib/entries/  # Y.Doc wrapper, materializer
-    src/lib/sync/     # outbox, sync engine, blob fetcher
+    src/lib/sync/     # api client, outbox, blob fetcher, sync engine, local-write notify
     src/lib/ui/       # components: EntryCard, MarkdownView, PhotoStrip, TagPicker, MapView, ...
     src/routes/
     static/basemap.pmtiles  # bundled offline vector basemap, see "map" above
@@ -173,6 +176,7 @@ dayzero/
     build.zig  build.zig.zon
     src/main.zig  src/config.zig  src/db.zig  src/api.zig
     test-integration.sh   # curl-based protocol test against a real running instance
+    test-e2e-sync.sh      # real server + client vitest sync harness, two simulated devices
   scripts/
     build-basemap.sh  README.md   # rebuilds app/static/basemap.pmtiles
   docs/protocol.md   # the sync protocol, kept in lockstep with both implementations
@@ -187,15 +191,17 @@ dayzero/
 5. **calendar & streaks**: `/calendar` month grid keyed off `entry_date`, `/?date=...` day filtering, current-streak counter on the home screen
 6. **map**: `scripts/build-basemap.sh` + committed `basemap.pmtiles`, `maplibre-gl` locator map on entries with a location, `/map` overview of all located entries, custom map tile url setting, labeled city names via `scripts/build-glyphs.sh` + committed `glyphs/dejavu-sans/0-255.pbf`
 7. **server**: `updates`/`blobs` schema, required bearer-token auth, `/api/changes` push/pull (base64-wrapped updates, cursor pagination), `/api/blobs/<sha256>` put/get (content-addressed, hash-verified), `docs/protocol.md`, `zig build test` unit tests + `server/test-integration.sh` curl-based protocol test
-8. **sync engine**: outbox + cursor pull on the client, settings screen for server url/token, convergence tests (two simulated devices editing the same entry offline)
+8. **sync engine**: `app/src/lib/sync/` (api, outbox, blobs, engine, notify), `applyRemoteUpdate` in `entries/store.ts`, `/settings` sync server url + token + manual "sync now", CORS on the server, `sync/api.test.ts` (mocked-fetch unit tests), `server/test-e2e-sync.sh` (real server + vitest sync harness, two simulated devices converging after concurrent offline edits)
 9. **polish**: export/import (single sqlite file or zip of markdown+photos), pwa icons/manifest, empty states, lighthouse pass
 
 ## verification
 
-- `app`: vitest for the materializer and sync engine — in particular: two Y.Docs diverge offline, exchange updates in both orders, assert identical text/tags/meta and identical materialized rows
+- `app`: vitest for the materializer — two Y.Docs diverge offline, exchange updates in both orders, assert identical text/tags/meta and identical materialized rows (`entries/materialize.test.ts`)
+- `app`: vitest for the sync engine's wire layer — base64 round-tripping, request shapes, pagination, error handling, all against a mocked `fetch` (`sync/api.test.ts`); `entries/store.ts`'s db-backed pieces (`applyRemoteUpdate`, outbox, blobs) aren't unit tested the same way since they need a real sqlite-wasm/OPFS worker (a browser), not just node — covered by the browser smoke test below instead
 - `app`: vitest for the streak calculation — given a set of entry dates, assert the correct current-streak count, including gaps, an unbroken streak, and today vs. yesterday as the streak's anchor
 - `server`: `zig build test`; curl-based integration script (push updates, pull from zero cursor, blob round-trip, auth rejection)
-- end-to-end: script that starts the server and runs the vitest sync harness against it with two simulated devices, asserting convergence after concurrent edits
+- end-to-end: `server/test-e2e-sync.sh` starts a real server and runs the vitest sync harness (`sync/e2e.test.ts`, skipped unless `DAYZERO_E2E_SERVER_URL`/`DAYZERO_E2E_TOKEN` are set) against it — two `Y.Doc`s standing in for two devices push/pull through the real HTTP protocol and are asserted to converge after concurrent edits
+- manual: two isolated browser profiles (separate OPFS storage, same real server) exercising the actual UI end to end — create an entry on device A, sync, pull it up on device B, edit concurrently on both (text on A, a tag on B) without syncing, then sync in order and confirm both devices converge to the same markdown + tags
 
 ## defaults chosen (flag if you disagree)
 

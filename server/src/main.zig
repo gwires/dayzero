@@ -37,7 +37,18 @@ pub fn main() !void {
     defer server.deinit();
     defer server.stop();
 
-    const router = try server.router(.{});
+    // browser clients (the PWA) call this server cross-origin — it's a
+    // separate self-hosted service, not served from the same origin as the
+    // app in general. "*" is fine here: requests never use credentialed mode
+    // (cookies), just a bearer token in a header, which CORS doesn't
+    // restrict the same way.
+    const cors = try server.middleware(httpz.middleware.Cors, .{
+        .origin = "*",
+        .headers = "content-type,authorization",
+        .methods = "GET,POST,PUT,OPTIONS",
+        .max_age = "300",
+    });
+    const router = try server.router(.{ .middlewares = &.{cors} });
     api.registerRoutes(router);
 
     std.log.info("dayzero-server listening on http://{s}:{d} (db: {s})", .{ cfg.address, cfg.port, cfg.db_path });

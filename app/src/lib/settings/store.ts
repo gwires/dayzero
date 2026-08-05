@@ -36,3 +36,34 @@ export function getMapTileUrl(): Promise<string | undefined> {
 export function setMapTileUrl(url: string | undefined): Promise<void> {
 	return setSetting(MAP_TILE_URL_KEY, url);
 }
+
+const SYNC_SERVER_URL_KEY = 'sync_server_url';
+const SYNC_TOKEN_KEY = 'sync_token';
+const SYNC_CURSOR_KEY = 'sync_cursor';
+
+/** the sync server's base url (e.g. `https://diary.example.com`) and bearer token. see PLAN.md "sync". */
+export function getSyncServerUrl(): Promise<string | undefined> {
+	return getSetting(SYNC_SERVER_URL_KEY);
+}
+
+export function setSyncServerUrl(url: string | undefined): Promise<void> {
+	return setSetting(SYNC_SERVER_URL_KEY, url);
+}
+
+export function getSyncToken(): Promise<string | undefined> {
+	return getSetting(SYNC_TOKEN_KEY);
+}
+
+export function setSyncToken(token: string | undefined): Promise<void> {
+	return setSetting(SYNC_TOKEN_KEY, token);
+}
+
+/** the highest `seq` this device has already pulled from `/api/changes`. */
+export async function getSyncCursor(): Promise<number> {
+	const value = await getSetting(SYNC_CURSOR_KEY);
+	return value ? Number(value) : 0;
+}
+
+export function setSyncCursor(cursor: number): Promise<void> {
+	return setSetting(SYNC_CURSOR_KEY, String(cursor));
+}

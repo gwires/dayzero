@@ -6,8 +6,16 @@ never parses or merges CRDT data — all merging happens on clients via
 `Y.applyUpdate`, which is commutative and idempotent, so message ordering
 and duplicate delivery are both safe. See PLAN.md "sync" and "entries as
 CRDTs" for the design rationale; this doc is the wire-level contract kept in
-lockstep with both the zig server (`server/src/api.zig`) and, from
-milestone 8 onward, the client sync engine (`app/src/lib/sync/`).
+lockstep with both the zig server (`server/src/api.zig`) and the client sync
+engine (`app/src/lib/sync/`).
+
+Cross-origin: the PWA and the server are separate origins in general (a
+self-hosted service, not served from the app's own origin), so the server
+sends CORS headers (`Access-Control-Allow-Origin: *`) and answers the
+browser's `OPTIONS` preflight on every endpoint — see `middleware.Cors` in
+`server/src/main.zig`. `*` is fine here since requests never use
+credentialed mode (cookies); the bearer token travels as a plain header,
+which CORS doesn't restrict the same way.
 
 ## auth
 
@@ -103,11 +111,24 @@ Errors: `400 {"error": "invalid_id"}` (path segment isn't 64 hex chars),
 Response: the raw bytes with `Content-Type: application/octet-stream`, or
 `404 {"error": "not_found"}` if no blob with that id has been uploaded.
 
-## client sync loop (milestone 8, not yet implemented)
+## client sync loop
 
-On startup, on the browser's `online` event, and debounced after local
-writes: pull (looping on `cursor` until caught up, applying each update via
-`Y.applyUpdate` and re-materializing the affected entry), then push
-whatever's in the local `outbox` table. Pull learns which attachment
-hashes it needs from each doc's `photos` map and fetches any it doesn't
-already have locally via `GET /api/blobs/<sha256>`.
+`syncOnce()` in `app/src/lib/sync/engine.ts`, wired up by `initSyncEngine()`
+on app startup, on the browser's `online` event, and debounced after local
+writes (`sync/notify.ts`):
+
+1. **pull** — loop on `cursor` (persisted in `sync_state`) until a page
+   comes back with fewer than the page size: apply each update via
+   `applyRemoteUpdate` (`entries/store.ts`; `Y.applyUpdate` +
+   re-materialize, *without* re-queuing it to the outbox — it just came
+   from the log), then fetch any attachment hashes the newly-applied docs'
+   `photos` maps reference that aren't already in the local `attachments`
+   table (`sync/blobs.ts`'s `fetchMissingBlobs`).
+2. **push** — send whatever's in the local `outbox` table (`sync/outbox.ts`),
+   deleting exactly the rows that were just sent (by `rowid`, so a write
+   that lands mid-push isn't dropped without being sent), then upload any
+   attachment blobs not yet marked `pushed` (`sync/blobs.ts`'s
+   `pushPendingBlobs`).
+
+No-ops quietly (not an error) if no server url/token is configured yet
+(`/settings`).

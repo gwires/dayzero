@@ -1,6 +1,7 @@
 import * as Y from 'yjs';
 import { v7 as uuidv7 } from 'uuid';
 import { getDb } from '$lib/db/client';
+import { notifyLocalWrite } from '$lib/sync/notify';
 import { getMeta, getPhotos, getTags, getText } from './ydoc';
 import { materialize, type MaterializedEntry } from './materialize';
 import { encodePhoto } from './photos';
@@ -18,12 +19,22 @@ function captureUpdate(doc: Y.Doc, mutate: (doc: Y.Doc) => void): Uint8Array {
 	return update ?? Y.encodeStateAsUpdate(doc);
 }
 
-async function persist(id: string, doc: Y.Doc, update: Uint8Array): Promise<MaterializedEntry> {
+/**
+ * writes the entry/entry_tags/ydocs projection of `doc`, and — only when
+ * `outboxUpdate` is given — queues that update for push. remote updates
+ * (see `applyRemoteUpdate`) pass `null`: they came *from* the sync log
+ * already, so re-queuing them would just echo them back to the server.
+ */
+async function writeMaterialized(
+	id: string,
+	doc: Y.Doc,
+	outboxUpdate: Uint8Array | null
+): Promise<MaterializedEntry> {
 	const db = getDb();
 	const now = new Date().toISOString();
 	const { entry, tags } = materialize(id, doc, now);
 
-	await db.execBatch([
+	const stmts = [
 		{
 			sql: `insert into entries
 				(id, entry_date, markdown, location_lat, location_lng, location_name, deleted, updated_at)
@@ -56,14 +67,39 @@ async function persist(id: string, doc: Y.Doc, update: Uint8Array): Promise<Mate
 			sql: `insert into ydocs (entry_id, snapshot) values (?, ?)
 				on conflict(entry_id) do update set snapshot = excluded.snapshot`,
 			params: [id, Y.encodeStateAsUpdate(doc)]
-		},
-		{
-			sql: `insert into outbox (entry_id, update_, created_at) values (?, ?, ?)`,
-			params: [id, update, now]
 		}
-	]);
+	];
+	if (outboxUpdate) {
+		stmts.push({
+			sql: `insert into outbox (entry_id, update_, created_at) values (?, ?, ?)`,
+			params: [id, outboxUpdate, now]
+		});
+	}
 
+	await db.execBatch(stmts);
 	return entry;
+}
+
+async function persist(id: string, doc: Y.Doc, update: Uint8Array): Promise<MaterializedEntry> {
+	const entry = await writeMaterialized(id, doc, update);
+	notifyLocalWrite();
+	return entry;
+}
+
+/**
+ * applies an update pulled from the sync server to this device's copy of an
+ * entry (creating it locally if this device has never seen it before), and
+ * re-materializes. returns the entry's current photos so the caller can
+ * fetch any newly-referenced attachment blobs it doesn't have yet.
+ */
+export async function applyRemoteUpdate(
+	id: string,
+	update: Uint8Array
+): Promise<{ entry: MaterializedEntry; photos: PhotoEntry[] }> {
+	const doc = (await loadEntryDoc(id)) ?? new Y.Doc();
+	Y.applyUpdate(doc, update);
+	const entry = await writeMaterialized(id, doc, null);
+	return { entry, photos: listPhotos(doc) };
 }
 
 export interface EntryEdits {
