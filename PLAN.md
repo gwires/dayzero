@@ -109,10 +109,19 @@ marker opens that entry.
   output is small and stable enough to just commit, like the vendored
   sqlite amalgamation in `server/lib/`; re-run only when refreshing the
   source data. `tippecanoe` is added to the nix devshell for this
+- city names are labeled on the map (a `cities-label` symbol layer), using
+  GeoNames' `asciiname` field so the label text is always plain ASCII. this
+  keeps the offline glyph requirement to a single bundled range:
+  `app/static/glyphs/dejavu-sans/0-255.pbf`, generated from the `dejavu_fonts`
+  nix package via `scripts/build-glyphs.sh` (uses `fontnik`, installed
+  ad-hoc and pruned by the script — not an app dependency). MapLibre requires
+  pre-rendered SDF glyph `.pbf` files for any `symbol` layer `text-field`;
+  there's no client-side text rasterization fallback for latin text
 - estimated added weight: ~220kb (maplibre-gl) + ~15kb (pmtiles reader) +
-  ~1-3mb (`basemap.pmtiles`, borders + city points only, no imagery) — keep
-  an eye on the workbox `maximumFileSizeToCacheInBytes` ceiling (currently
-  5mb, set for the sqlite-wasm file) if the basemap grows close to it
+  ~1-3mb (`basemap.pmtiles`, borders + city points only, no imagery) +
+  ~80kb (`glyphs/dejavu-sans/0-255.pbf`) — keep an eye on the workbox
+  `maximumFileSizeToCacheInBytes` ceiling (currently 5mb, set for the
+  sqlite-wasm file) if the basemap grows close to it
 
 ## sync
 
@@ -174,7 +183,7 @@ dayzero/
 3. **photos & location**: attachment pipeline (resize → webp → blob), photo strip in entries; location capture
 4. **on this day**: query + home screen strip
 5. **calendar & streaks**: `/calendar` month grid keyed off `entry_date`, `/?date=...` day filtering, current-streak counter on the home screen
-6. **map**: `scripts/build-basemap.sh` + committed `basemap.pmtiles`, `maplibre-gl` locator map on entries with a location, `/map` overview of all located entries, custom map tile url setting
+6. **map**: `scripts/build-basemap.sh` + committed `basemap.pmtiles`, `maplibre-gl` locator map on entries with a location, `/map` overview of all located entries, custom map tile url setting, labeled city names via `scripts/build-glyphs.sh` + committed `glyphs/dejavu-sans/0-255.pbf`
 7. **server**: schema, token auth, `/api/changes` push/pull, blob endpoints, tests
 8. **sync engine**: outbox + cursor pull on the client, settings screen for server url/token, convergence tests (two simulated devices editing the same entry offline)
 9. **polish**: export/import (single sqlite file or zip of markdown+photos), pwa icons/manifest, empty states, lighthouse pass

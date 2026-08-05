@@ -35,7 +35,10 @@ const cities = {
 	features: top.map((row) => ({
 		type: 'Feature',
 		properties: {
-			name: row[1],
+			// asciiname (not the native name) so the map's label layer only ever
+			// needs the small ASCII/Latin-1 glyph range bundled in
+			// app/static/glyphs — see build-glyphs.sh.
+			name: row[2] || row[1],
 			country: row[8],
 			population: Number(row[14])
 		},

@@ -21,6 +21,7 @@
             pkgs.tippecanoe
             pkgs.pmtiles
             pkgs.unzip
+            pkgs.dejavu_fonts
           ];
         };
       }

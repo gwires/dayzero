@@ -68,7 +68,7 @@ export default defineConfig({
 			strategies: 'generateSW',
 			injectRegister: false,
 			workbox: {
-				globPatterns: ['**/*.{js,mjs,css,html,ico,png,svg,webmanifest,wasm,pmtiles}'],
+				globPatterns: ['**/*.{js,mjs,css,html,ico,png,svg,webmanifest,wasm,pmtiles,pbf}'],
 				maximumFileSizeToCacheInBytes: 5 * 1024 * 1024
 			},
 			manifest: {

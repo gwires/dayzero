@@ -48,6 +48,10 @@
 
 	const offlineStyle: StyleSpecification = {
 		version: 8,
+		// self-hosted glyph range (ASCII + Latin-1 only, from
+		// app/static/glyphs/ — see scripts/build-glyphs.sh) matching the
+		// asciiname labels baked into basemap.pmtiles's cities layer.
+		glyphs: '/glyphs/{fontstack}/{range}.pbf',
 		sources: {
 			basemap: {
 				type: 'vector',
@@ -78,6 +82,25 @@
 				source: 'basemap',
 				'source-layer': 'cities',
 				paint: { 'circle-radius': 2, 'circle-color': '#8a7f6a' }
+			},
+			{
+				id: 'cities-label',
+				type: 'symbol',
+				source: 'basemap',
+				'source-layer': 'cities',
+				minzoom: 3,
+				layout: {
+					'text-field': ['get', 'name'],
+					'text-font': ['dejavu-sans'],
+					'text-size': 11,
+					'text-anchor': 'left',
+					'text-offset': [0.6, 0]
+				},
+				paint: {
+					'text-color': '#4a4335',
+					'text-halo-color': '#f2efe9',
+					'text-halo-width': 1
+				}
 			}
 		]
 	};
