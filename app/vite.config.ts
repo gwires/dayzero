@@ -4,6 +4,12 @@ import { sveltekit } from '@sveltejs/kit/vite';
 import { SvelteKitPWA } from '@vite-pwa/sveltekit';
 
 export default defineConfig({
+	optimizeDeps: {
+		exclude: ['@sqlite.org/sqlite-wasm']
+	},
+	worker: {
+		format: 'es'
+	},
 	plugins: [
 		sveltekit({
 			compilerOptions: {
@@ -18,7 +24,8 @@ export default defineConfig({
 			strategies: 'generateSW',
 			injectRegister: false,
 			workbox: {
-				globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest}']
+				globPatterns: ['**/*.{js,css,html,ico,png,svg,webmanifest,wasm}'],
+				maximumFileSizeToCacheInBytes: 5 * 1024 * 1024
 			},
 			manifest: {
 				name: 'dayzero',
