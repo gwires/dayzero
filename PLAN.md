@@ -17,6 +17,7 @@ config, or rely on nix-direnv / `--extra-experimental-features "nix-command flak
 - a few photos per entry (client-side resized/re-encoded, stored as blobs)
 - tags (freeform, autocomplete from existing tags, filter timeline by tag)
 - location per entry (geolocation api for coords + free-text place name; no online reverse geocoding in v1 so it stays offline-friendly)
+- offline map: a locator map on entries with a captured location (lat/lng text stays too), using a small bundled vector basemap (country borders + top 10k cities) by default, with an optional custom tile url (self-hosted or OSM) for more detail when online
 - "on this day": entries from the same month/day in earlier years, shown on the home screen
 - calendar view: a month grid showing which days have entries; clicking a day shows that day's entries
 - current streak: consecutive days with at least one entry, shown on the home screen
@@ -30,6 +31,7 @@ config, or rely on nix-direnv / `--extra-experimental-features "nix-command flak
 - schema migrations: numbered sql migrations applied by the worker on startup (`user_version` pragma)
 - photos: file input / drag-drop → resize to max ~2048px, re-encode to webp via canvas → stored content-addressed (sha-256) in an `attachments` table
 - markdown rendering: `marked` + DOMPurify; editor is a plain textarea with preview toggle in v1 (codemirror 6 later — it has a first-class yjs binding (`y-codemirror.next`) which would give live collaborative cursors for free)
+- map: `maplibre-gl` rendering a bundled offline vector basemap (`pmtiles`) by default, or a custom online tile url from settings — see "map" below
 
 ### routes
 
@@ -38,7 +40,7 @@ config, or rely on nix-direnv / `--extra-experimental-features "nix-command flak
 - `/entry/[id]` view/edit entry
 - `/tags` and `/?tag=...` tag filtering
 - `/calendar` and `/?date=...` month grid of which days have entries; clicking a day filters the timeline to it
-- `/settings` sync server url + token, export/import, storage usage
+- `/settings` sync server url + token, map tile url, export/import, storage usage
 
 ## entries as CRDTs
 
@@ -77,6 +79,37 @@ sync_state(key TEXT PRIMARY KEY, value TEXT)        -- device id, server cursor
 "on this day" is just: `WHERE deleted=0 AND strftime('%m-%d', entry_date) = strftime('%m-%d', 'now') AND entry_date < date('now')`.
 
 the calendar view is `SELECT DISTINCT entry_date FROM entries WHERE deleted=0 AND strftime('%Y-%m', entry_date) = ?` for the visible month, rendered as a grid with entry-having days marked; clicking a day is just `/?date=<entry_date>` (same pattern as `?tag=...`). the current streak is computed client-side from the distinct, sorted `entry_date` values already in `entries`: walk backwards day-by-day from today (or yesterday, if nothing is logged yet today) while a matching `entry_date` exists, counting as you go — pure function, no new sql needed.
+
+## map
+
+entries with a captured location (`location_lat`/`location_lng`) get a small
+locator map in the entry view, in addition to the existing lat/lng text
+(which stays — the map is additive, not a replacement).
+
+- rendering: `maplibre-gl` (open-source WebGL vector tile renderer, no api key)
+- offline by default: a single bundled `app/static/basemap.pmtiles` file —
+  country borders (Natural Earth 1:110m admin-0, public domain) plus the top
+  10,000 cities by population (GeoNames `cities15000`, CC BY 4.0 — credited
+  in `/settings`). read via the `pmtiles` library's HTTP range-request
+  reader: no backend, no COOP/COEP, just another static file the service
+  worker precaches alongside everything else
+- online alternative: `/settings` has a "map tile url" field (stored in the
+  existing `sync_state` table, no schema change) for an OSM-compatible
+  raster/vector tile url template — a self-hosted tileserver, a commercial
+  provider, or osm.org directly if the user has read and accepts its usage
+  policy. dayzero never ships a default that hits osm.org, since their
+  tile usage policy disallows unauthorized embedded use at any real scale
+- rebuilding the basemap: `scripts/build-basemap.sh` (documented in
+  `scripts/README.md`) downloads Natural Earth + GeoNames, filters/sorts to
+  the top 10k cities by population, and runs `tippecanoe` to produce
+  `basemap.pmtiles`. not run automatically as part of the build — the
+  output is small and stable enough to just commit, like the vendored
+  sqlite amalgamation in `server/lib/`; re-run only when refreshing the
+  source data. `tippecanoe` is added to the nix devshell for this
+- estimated added weight: ~220kb (maplibre-gl) + ~15kb (pmtiles reader) +
+  ~1-3mb (`basemap.pmtiles`, borders + city points only, no imagery) — keep
+  an eye on the workbox `maximumFileSizeToCacheInBytes` ceiling (currently
+  5mb, set for the sqlite-wasm file) if the basemap grows close to it
 
 ## sync
 
@@ -120,11 +153,14 @@ dayzero/
     src/lib/db/       # worker, schema, migrations, typed rpc
     src/lib/entries/  # Y.Doc wrapper, materializer
     src/lib/sync/     # outbox, sync engine, blob fetcher
-    src/lib/ui/       # components: EntryCard, MarkdownView, PhotoStrip, TagPicker, ...
+    src/lib/ui/       # components: EntryCard, MarkdownView, PhotoStrip, TagPicker, MapView, ...
     src/routes/
+    static/basemap.pmtiles  # bundled offline vector basemap, see "map" above
   server/
     build.zig  build.zig.zon
     src/main.zig  src/config.zig  src/db.zig  src/api.zig
+  scripts/
+    build-basemap.sh  README.md   # rebuilds app/static/basemap.pmtiles
   docs/protocol.md   # the sync protocol, kept in lockstep with both implementations
 ```
 
@@ -135,9 +171,10 @@ dayzero/
 3. **photos & location**: attachment pipeline (resize → webp → blob), photo strip in entries; location capture
 4. **on this day**: query + home screen strip
 5. **calendar & streaks**: `/calendar` month grid keyed off `entry_date`, `/?date=...` day filtering, current-streak counter on the home screen
-6. **server**: schema, token auth, `/api/changes` push/pull, blob endpoints, tests
-7. **sync engine**: outbox + cursor pull on the client, settings screen for server url/token, convergence tests (two simulated devices editing the same entry offline)
-8. **polish**: export/import (single sqlite file or zip of markdown+photos), pwa icons/manifest, empty states, lighthouse pass
+6. **map**: `scripts/build-basemap.sh` + committed `basemap.pmtiles`, `maplibre-gl` locator map on entries with a location, custom map tile url setting
+7. **server**: schema, token auth, `/api/changes` push/pull, blob endpoints, tests
+8. **sync engine**: outbox + cursor pull on the client, settings screen for server url/token, convergence tests (two simulated devices editing the same entry offline)
+9. **polish**: export/import (single sqlite file or zip of markdown+photos), pwa icons/manifest, empty states, lighthouse pass
 
 ## verification
 
