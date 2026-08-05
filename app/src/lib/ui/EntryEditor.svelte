@@ -1,15 +1,33 @@
 <script lang="ts">
 	import { marked } from 'marked';
 	import DOMPurify from 'dompurify';
+	import PhotoStrip from './PhotoStrip.svelte';
+	import type { PhotoEntry } from '$lib/entries/store';
+
+	export interface EntryEditPayload {
+		entryDate: string;
+		markdown: string;
+		tags: string[];
+		locationLat: number | null;
+		locationLng: number | null;
+		locationName: string | null;
+	}
 
 	interface Props {
 		initialEntryDate: string;
 		initialMarkdown?: string;
 		initialTags?: string[];
+		initialLocationLat?: number | null;
+		initialLocationLng?: number | null;
+		initialLocationName?: string | null;
 		existingTags?: string[];
+		photos?: PhotoEntry[];
+		onAddPhotos?: (files: File[]) => void | Promise<void>;
+		onRemovePhoto?: (hash: string) => void | Promise<void>;
+		photosBusy?: boolean;
 		saving?: boolean;
 		saveLabel?: string;
-		onSave: (data: { entryDate: string; markdown: string; tags: string[] }) => void | Promise<void>;
+		onSave: (data: EntryEditPayload) => void | Promise<void>;
 		onDelete?: () => void | Promise<void>;
 	}
 
@@ -17,7 +35,14 @@
 		initialEntryDate,
 		initialMarkdown = '',
 		initialTags = [],
+		initialLocationLat = null,
+		initialLocationLng = null,
+		initialLocationName = null,
 		existingTags = [],
+		photos,
+		onAddPhotos,
+		onRemovePhoto,
+		photosBusy = false,
 		saving = false,
 		saveLabel = 'save',
 		onSave,
@@ -32,8 +57,16 @@
 	let markdown = $state(initialMarkdown);
 	// svelte-ignore state_referenced_locally
 	let tags = $state([...initialTags]);
+	// svelte-ignore state_referenced_locally
+	let locationLat = $state(initialLocationLat);
+	// svelte-ignore state_referenced_locally
+	let locationLng = $state(initialLocationLng);
+	// svelte-ignore state_referenced_locally
+	let locationName = $state(initialLocationName ?? '');
 	let tagDraft = $state('');
 	let preview = $state(false);
+	let locating = $state(false);
+	let locationError = $state<string | undefined>();
 
 	const previewHtml = $derived(
 		preview ? DOMPurify.sanitize(marked.parse(markdown, { async: false })) : ''
@@ -54,6 +87,61 @@
 			event.preventDefault();
 			addTag(tagDraft);
 		}
+	}
+
+	function geolocationErrorMessage(err: GeolocationPositionError): string {
+		switch (err.code) {
+			case err.PERMISSION_DENIED:
+				return 'location permission denied';
+			case err.POSITION_UNAVAILABLE:
+				return 'location unavailable';
+			case err.TIMEOUT:
+				return 'location request timed out';
+			default:
+				return 'failed to get location';
+		}
+	}
+
+	async function useCurrentLocation() {
+		if (!navigator.geolocation) {
+			locationError = 'geolocation is not available in this browser';
+			return;
+		}
+		locating = true;
+		locationError = undefined;
+		try {
+			const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+				navigator.geolocation.getCurrentPosition(resolve, reject, {
+					enableHighAccuracy: true,
+					timeout: 10000
+				});
+			});
+			locationLat = position.coords.latitude;
+			locationLng = position.coords.longitude;
+		} catch (err) {
+			locationError =
+				err instanceof GeolocationPositionError
+					? geolocationErrorMessage(err)
+					: 'failed to get location';
+		} finally {
+			locating = false;
+		}
+	}
+
+	function clearLocation() {
+		locationLat = null;
+		locationLng = null;
+	}
+
+	function save() {
+		onSave({
+			entryDate,
+			markdown,
+			tags,
+			locationLat,
+			locationLng,
+			locationName: locationName.trim() || null
+		});
 	}
 </script>
 
@@ -102,8 +190,33 @@
 		</datalist>
 	</div>
 
+	<div class="location-editor">
+		<div class="location-row">
+			<button type="button" onclick={useCurrentLocation} disabled={locating}>
+				{locating ? 'locating…' : 'use current location'}
+			</button>
+			{#if locationLat != null && locationLng != null}
+				<span class="location-coords">{locationLat.toFixed(4)}, {locationLng.toFixed(4)}</span>
+				<button type="button" onclick={clearLocation}>clear</button>
+			{/if}
+		</div>
+		{#if locationError}
+			<p class="error">{locationError}</p>
+		{/if}
+		<input class="location-name" placeholder="place name…" bind:value={locationName} />
+	</div>
+
+	{#if onAddPhotos && onRemovePhoto}
+		<PhotoStrip
+			photos={photos ?? []}
+			onAdd={onAddPhotos}
+			onRemove={onRemovePhoto}
+			busy={photosBusy}
+		/>
+	{/if}
+
 	<div class="editor-actions">
-		<button type="button" onclick={() => onSave({ entryDate, markdown, tags })} disabled={saving}>
+		<button type="button" onclick={save} disabled={saving}>
 			{saving ? 'saving…' : saveLabel}
 		</button>
 		{#if onDelete}

@@ -1,8 +1,9 @@
 import * as Y from 'yjs';
 import { v7 as uuidv7 } from 'uuid';
 import { getDb } from '$lib/db/client';
-import { getMeta, getTags, getText } from './ydoc';
+import { getMeta, getPhotos, getTags, getText } from './ydoc';
 import { materialize, type MaterializedEntry } from './materialize';
+import { encodePhoto } from './photos';
 
 /** captures the single update produced by a doc mutation, for the outbox. */
 function captureUpdate(doc: Y.Doc, mutate: (doc: Y.Doc) => void): Uint8Array {
@@ -64,19 +65,33 @@ async function persist(id: string, doc: Y.Doc, update: Uint8Array): Promise<Mate
 	return entry;
 }
 
+export interface EntryEdits {
+	entryDate: string;
+	markdown: string;
+	tags: string[];
+	locationLat?: number | null;
+	locationLng?: number | null;
+	locationName?: string | null;
+}
+
 /**
- * replaces a doc's text/tags/entry_date with the given values (add/remove
- * diffed against current state, so unrelated concurrent edits still merge).
+ * replaces a doc's text/tags/entry_date/location with the given values
+ * (add/remove diffed against current state, so unrelated concurrent edits
+ * still merge).
  */
-export function applyEdits(
-	doc: Y.Doc,
-	data: { entryDate: string; markdown: string; tags: string[] }
-): void {
+export function applyEdits(doc: Y.Doc, data: EntryEdits): void {
 	const meta = getMeta(doc);
 	const text = getText(doc);
 	const tagsMap = getTags(doc);
 
 	meta.set('entry_date', data.entryDate);
+
+	if (data.locationLat != null) meta.set('location_lat', data.locationLat);
+	else meta.delete('location_lat');
+	if (data.locationLng != null) meta.set('location_lng', data.locationLng);
+	else meta.delete('location_lng');
+	if (data.locationName) meta.set('location_name', data.locationName);
+	else meta.delete('location_name');
 
 	if (text.toString() !== data.markdown) {
 		text.delete(0, text.length);
@@ -89,11 +104,9 @@ export function applyEdits(
 	for (const tag of nextTags) if (!currentTags.has(tag)) tagsMap.set(tag, true);
 }
 
-export async function createEntry(opts: {
-	entryDate: string;
-	markdown?: string;
-	tags?: string[];
-}): Promise<string> {
+export async function createEntry(
+	opts: Partial<Omit<EntryEdits, 'entryDate'>> & { entryDate: string }
+): Promise<string> {
 	const id = uuidv7();
 	const doc = new Y.Doc();
 	const update = captureUpdate(doc, (d) => {
@@ -101,7 +114,10 @@ export async function createEntry(opts: {
 		applyEdits(d, {
 			entryDate: opts.entryDate,
 			markdown: opts.markdown ?? '',
-			tags: opts.tags ?? []
+			tags: opts.tags ?? [],
+			locationLat: opts.locationLat,
+			locationLng: opts.locationLng,
+			locationName: opts.locationName
 		});
 	});
 	await persist(id, doc, update);
@@ -160,6 +176,56 @@ export async function listTags(): Promise<{ tag: string; count: number }[]> {
 			group by t.tag
 			order by t.tag asc`
 	});
+}
+
+export interface PhotoEntry {
+	hash: string;
+	mime: string;
+	width: number;
+	height: number;
+}
+
+/** the entry's photos, derived straight from its Y.Doc (source of truth). */
+export function listPhotos(doc: Y.Doc): PhotoEntry[] {
+	return [...getPhotos(doc).entries()]
+		.map(([hash, meta]) => ({ hash, ...meta }))
+		.sort((a, b) => a.hash.localeCompare(b.hash));
+}
+
+/**
+ * resizes/re-encodes the file, stores it content-addressed in `attachments`,
+ * and references its hash from the doc's `photos` map. the bytes themselves
+ * sync separately from the doc updates (see PLAN.md "entries as CRDTs").
+ */
+export async function addPhoto(id: string, doc: Y.Doc, file: Blob): Promise<void> {
+	const photo = await encodePhoto(file);
+	const db = getDb();
+	await db.exec({
+		sql: `insert into attachments (id, mime, width, height, bytes, pushed)
+			values (?, ?, ?, ?, ?, 0)
+			on conflict(id) do nothing`,
+		params: [photo.hash, photo.mime, photo.width, photo.height, photo.bytes]
+	});
+	await updateEntry(id, doc, (d) => {
+		getPhotos(d).set(photo.hash, { mime: photo.mime, width: photo.width, height: photo.height });
+	});
+}
+
+export async function removePhoto(id: string, doc: Y.Doc, hash: string): Promise<void> {
+	await updateEntry(id, doc, (d) => {
+		getPhotos(d).delete(hash);
+	});
+}
+
+/** loads an attachment's bytes and returns a fresh object URL for display. */
+export async function getAttachmentUrl(hash: string): Promise<string | undefined> {
+	const db = getDb();
+	const rows = await db.select<{ bytes: Uint8Array; mime: string }>({
+		sql: `select bytes, mime from attachments where id = ?`,
+		params: [hash]
+	});
+	if (!rows.length) return undefined;
+	return URL.createObjectURL(new Blob([new Uint8Array(rows[0].bytes)], { type: rows[0].mime }));
 }
 
 export type { MaterializedEntry };

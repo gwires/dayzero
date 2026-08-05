@@ -1,14 +1,26 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import EntryEditor from '$lib/ui/EntryEditor.svelte';
-	import { applyEdits, deleteEntry, listTags, updateEntry } from '$lib/entries/store';
+	import EntryEditor, { type EntryEditPayload } from '$lib/ui/EntryEditor.svelte';
+	import {
+		addPhoto,
+		applyEdits,
+		deleteEntry,
+		listPhotos,
+		listTags,
+		removePhoto,
+		updateEntry,
+		type PhotoEntry
+	} from '$lib/entries/store';
 
 	let { data } = $props();
 
 	let saving = $state(false);
 	let error = $state<string | undefined>();
 	let existingTags = $state<string[]>([]);
+	// svelte-ignore state_referenced_locally
+	let photos = $state<PhotoEntry[]>(data.photos);
+	let photosBusy = $state(false);
 
 	$effect(() => {
 		listTags().then((rows) => {
@@ -16,7 +28,7 @@
 		});
 	});
 
-	async function save(update: { entryDate: string; markdown: string; tags: string[] }) {
+	async function save(update: EntryEditPayload) {
 		if (!data.doc) return;
 		saving = true;
 		error = undefined;
@@ -41,6 +53,36 @@
 			saving = false;
 		}
 	}
+
+	async function addPhotos(files: File[]) {
+		if (!data.doc) return;
+		photosBusy = true;
+		error = undefined;
+		try {
+			for (const file of files) {
+				await addPhoto(data.id, data.doc, file);
+			}
+			photos = listPhotos(data.doc);
+		} catch (err) {
+			error = err instanceof Error ? err.message : String(err);
+		} finally {
+			photosBusy = false;
+		}
+	}
+
+	async function removePhotoByHash(hash: string) {
+		if (!data.doc) return;
+		photosBusy = true;
+		error = undefined;
+		try {
+			await removePhoto(data.id, data.doc, hash);
+			photos = listPhotos(data.doc);
+		} catch (err) {
+			error = err instanceof Error ? err.message : String(err);
+		} finally {
+			photosBusy = false;
+		}
+	}
 </script>
 
 <h1>entry</h1>
@@ -56,7 +98,14 @@
 		initialEntryDate={data.entryDate}
 		initialMarkdown={data.markdown}
 		initialTags={data.tags}
+		initialLocationLat={data.locationLat}
+		initialLocationLng={data.locationLng}
+		initialLocationName={data.locationName}
 		{existingTags}
+		{photos}
+		onAddPhotos={addPhotos}
+		onRemovePhoto={removePhotoByHash}
+		{photosBusy}
 		{saving}
 		saveLabel="save changes"
 		onSave={save}

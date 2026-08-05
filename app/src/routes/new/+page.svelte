@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { goto } from '$app/navigation';
 	import { resolve } from '$app/paths';
-	import EntryEditor from '$lib/ui/EntryEditor.svelte';
+	import EntryEditor, { type EntryEditPayload } from '$lib/ui/EntryEditor.svelte';
 	import { createEntry, listTags } from '$lib/entries/store';
 
 	let saving = $state(false);
@@ -18,7 +18,7 @@
 		});
 	});
 
-	async function save(data: { entryDate: string; markdown: string; tags: string[] }) {
+	async function save(data: EntryEditPayload) {
 		saving = true;
 		error = undefined;
 		try {
