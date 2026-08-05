@@ -192,7 +192,7 @@ dayzero/
 6. **map**: `scripts/build-basemap.sh` + committed `basemap.pmtiles`, `maplibre-gl` locator map on entries with a location, `/map` overview of all located entries, custom map tile url setting, labeled city names via `scripts/build-glyphs.sh` + committed `glyphs/dejavu-sans/0-255.pbf`
 7. **server**: `updates`/`blobs` schema, required bearer-token auth, `/api/changes` push/pull (base64-wrapped updates, cursor pagination), `/api/blobs/<sha256>` put/get (content-addressed, hash-verified), `docs/protocol.md`, `zig build test` unit tests + `server/test-integration.sh` curl-based protocol test
 8. **sync engine**: `app/src/lib/sync/` (api, outbox, blobs, engine, notify), `applyRemoteUpdate` in `entries/store.ts`, `/settings` sync server url + token + manual "sync now", CORS on the server, `sync/api.test.ts` (mocked-fetch unit tests), `server/test-e2e-sync.sh` (real server + vitest sync harness, two simulated devices converging after concurrent offline edits)
-9. **polish**: export/import (single sqlite file or zip of markdown+photos), pwa icons/manifest, empty states, lighthouse pass
+9. **polish**: export/import — done as a single sqlite file (`app/src/lib/settings/backup.ts`), per "defaults chosen" below, not the zip-of-markdown+photos alternative; pwa icons/manifest — done (milestone 1); empty states — done (timeline, `/map`); lighthouse pass — remaining
 
 ## verification
 
