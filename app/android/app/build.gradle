@@ -3,6 +3,7 @@ apply plugin: 'com.android.application'
 android {
     namespace = "nl.defekt.dayzero"
     compileSdk = rootProject.ext.compileSdkVersion
+    buildToolsVersion = rootProject.ext.buildToolsVersion
     defaultConfig {
         applicationId "nl.defekt.dayzero"
         minSdkVersion rootProject.ext.minSdkVersion

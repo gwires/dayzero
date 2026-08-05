@@ -24,6 +24,19 @@ allprojects {
     }
 }
 
+// AGP's own default build-tools version (currently 35.0.0) doesn't track
+// compileSdk, and modules pulled in from node_modules (@capacitor/android,
+// cordova plugins) don't set buildToolsVersion themselves. Left alone, AGP
+// tries to auto-install that default into the Nix-provided SDK, which is a
+// read-only store path. Force every module onto the version we actually have.
+subprojects {
+    afterEvaluate { proj ->
+        if (proj.hasProperty('android')) {
+            proj.android.buildToolsVersion = rootProject.ext.buildToolsVersion
+        }
+    }
+}
+
 task clean(type: Delete) {
     delete rootProject.buildDir
 }
