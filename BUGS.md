@@ -47,6 +47,18 @@ attempt (`maximumAge: 60000, timeout: 10000`) first, falling back to
 `enableHighAccuracy: true` with a 60s timeout (a real GPS fix) unless the
 first attempt was a permission denial.
 
+**Verified on-device (2026-08-06)**: confirmed working, with a caveat —
+on the very first attempt after granting permission the GPS chip had no
+AGPS almanac/ephemeris data yet, so it needed a fix obtained via another
+app (Maps) before our request would resolve. That's normal Android GPS
+behavior (any app's fix warms up the chip for the next one, since AGPS
+data is device-wide, not per-app) and not something our request options
+control; the 60s high-accuracy timeout is meant to cover a genuine cold
+start, but a *first-ever* fix on a device can occasionally exceed even
+that. Not treating this as a further bug — just worth knowing if "use
+current location" fails on a completely fresh device/permission grant,
+try opening Maps once first.
+
 ## 2. "loading…" forever on timeline, tags, calendar, and map — FIXED (error surfacing)
 
 **Symptom**: every db-backed page (`/`, `/tags`, `/calendar`, `/map`) shows
