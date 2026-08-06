@@ -135,7 +135,24 @@
 		locationError = undefined;
 		try {
 			const { Geolocation } = await import('@capacitor/geolocation');
-			const position = await Geolocation.getCurrentPosition({ timeout: 30000 });
+			let position: Awaited<ReturnType<typeof Geolocation.getCurrentPosition>>;
+			try {
+				// enableHighAccuracy defaults to false, which on Android only ever
+				// asks for coarse/network location — fine for the common case, but
+				// if the device has no quick network fix (e.g. wifi scanning off,
+				// no signal indoors) this never falls back to GPS and just times
+				// out, even though ACCESS_FINE_LOCATION is granted and unused.
+				position = await Geolocation.getCurrentPosition({ maximumAge: 60000, timeout: 10000 });
+			} catch (err) {
+				if (nativeGeolocationErrorMessage(err) === 'location permission denied') {
+					throw err;
+				}
+				// force a real GPS fix with a much longer timeout for a cold start.
+				position = await Geolocation.getCurrentPosition({
+					enableHighAccuracy: true,
+					timeout: 60000
+				});
+			}
 			locationLat = position.coords.latitude;
 			locationLng = position.coords.longitude;
 		} catch (err) {

@@ -32,6 +32,21 @@ fix), and only if that fails falls back to `enableHighAccuracy: true` with a
 the fallback. A diary entry needs city-level accuracy, not meters, so low
 accuracy is fine as the primary path.
 
+**Update (2026-08-06) — same bug, native path**: confirmed on a real phone
+with the APK from milestone 10 — the permission prompt appears and is
+granted, but it still times out. Root cause: `useNativeCurrentLocation`
+(`EntryEditor.svelte`) called `@capacitor/geolocation`'s `getCurrentPosition`
+with only `{ timeout: 30000 }`. `enableHighAccuracy` defaults to `false`,
+which on Android only ever requests coarse/network-based location (and only
+the `ACCESS_COARSE_LOCATION` permission) — it never touches GPS, even though
+`ACCESS_FINE_LOCATION` is declared in the manifest. If the device has no fast
+network-based fix available (no recent Wi-Fi/cell scan, Wi-Fi scanning
+disabled, etc.), the request just times out with nothing to fall back to.
+**Fix**: mirrored the web path's two-tier strategy — fast low-accuracy
+attempt (`maximumAge: 60000, timeout: 10000`) first, falling back to
+`enableHighAccuracy: true` with a 60s timeout (a real GPS fix) unless the
+first attempt was a permission denial.
+
 ## 2. "loading…" forever on timeline, tags, calendar, and map — FIXED (error surfacing)
 
 **Symptom**: every db-backed page (`/`, `/tags`, `/calendar`, `/map`) shows
