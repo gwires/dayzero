@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { marked } from 'marked';
 	import DOMPurify from 'dompurify';
+	import { Capacitor } from '@capacitor/core';
 	import PhotoStrip from './PhotoStrip.svelte';
 	import MapView from './MapView.svelte';
 	import type { PhotoEntry } from '$lib/entries/store';
@@ -117,7 +118,38 @@
 		});
 	}
 
+	// the plain web geolocation API doesn't get a permission prompt inside a
+	// Capacitor WebView — Android requires the host app to implement that
+	// prompt itself — so native goes through the Capacitor plugin instead.
+	function nativeGeolocationErrorMessage(err: unknown): string {
+		const message = err instanceof Error ? err.message.toLowerCase() : '';
+		if (message.includes('denied')) return 'location permission denied';
+		if (message.includes('disabled') || message.includes('unavailable'))
+			return 'location unavailable';
+		if (message.includes('timeout')) return 'location request timed out';
+		return 'failed to get location';
+	}
+
+	async function useNativeCurrentLocation() {
+		locating = true;
+		locationError = undefined;
+		try {
+			const { Geolocation } = await import('@capacitor/geolocation');
+			const position = await Geolocation.getCurrentPosition({ timeout: 30000 });
+			locationLat = position.coords.latitude;
+			locationLng = position.coords.longitude;
+		} catch (err) {
+			locationError = nativeGeolocationErrorMessage(err);
+		} finally {
+			locating = false;
+		}
+	}
+
 	async function useCurrentLocation() {
+		if (Capacitor.isNativePlatform()) {
+			await useNativeCurrentLocation();
+			return;
+		}
 		if (!navigator.geolocation) {
 			locationError = 'geolocation is not available in this browser';
 			return;
