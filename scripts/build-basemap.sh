@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # Rebuilds app/static/basemap.pmtiles: the offline vector basemap (country
-# borders + top 10k cities by population) bundled with the app. See
+# borders + top 50k cities by population) bundled with the app. See
 # scripts/README.md and PLAN.md "map" for context. Run from the nix devshell
 # (needs node, tippecanoe, pmtiles).
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 out="$repo_root/app/static/basemap.pmtiles"
-top_n_cities=10000
+top_n_cities=50000
 
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
@@ -16,13 +16,13 @@ echo "==> downloading natural earth admin-0 countries (1:110m)"
 curl -sSL -o "$work/countries.raw.geojson" \
 	"https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_110m_admin_0_countries.geojson"
 
-echo "==> downloading geonames cities15000"
-curl -sSL -o "$work/cities15000.zip" "https://download.geonames.org/export/dump/cities15000.zip"
-unzip -q -o "$work/cities15000.zip" -d "$work"
+echo "==> downloading geonames cities5000"
+curl -sSL -o "$work/cities5000.zip" "https://download.geonames.org/export/dump/cities5000.zip"
+unzip -q -o "$work/cities5000.zip" -d "$work"
 
 echo "==> trimming properties, selecting top $top_n_cities cities by population"
 node "$repo_root/scripts/prepare-basemap-geojson.mjs" \
-	"$work/countries.raw.geojson" "$work/cities15000.txt" \
+	"$work/countries.raw.geojson" "$work/cities5000.txt" \
 	"$work/countries.geojson" "$work/cities.geojson" "$top_n_cities"
 
 echo "==> building mbtiles with tippecanoe"

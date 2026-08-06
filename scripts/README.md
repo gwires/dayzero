@@ -3,7 +3,7 @@
 ## build-basemap.sh
 
 Rebuilds `app/static/basemap.pmtiles`, the offline vector basemap bundled
-with the app (country borders + the top 10,000 cities by population — see
+with the app (country borders + the top 50,000 cities by population — see
 PLAN.md "map"). It's checked into the repo like the vendored sqlite
 amalgamation in `server/lib/`, so this script only needs to run when the
 source data should be refreshed, not as part of every build.
@@ -19,8 +19,8 @@ tippecanoe:
   countries (public domain), via the
   [nvkelso/natural-earth-vector](https://github.com/nvkelso/natural-earth-vector)
   GeoJSON mirror
-- [GeoNames](https://www.geonames.org/) `cities15000` dump (CC BY 4.0,
-  credited in `/settings`), filtered to the top 10,000 rows by population
+- [GeoNames](https://www.geonames.org/) `cities5000` dump (CC BY 4.0,
+  credited in `/settings`), filtered to the top 50,000 rows by population
 
 Requires `node`, `tippecanoe`, and `pmtiles` — all provided by the nix
 devshell (`flake.nix`).

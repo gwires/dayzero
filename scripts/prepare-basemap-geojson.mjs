@@ -1,4 +1,4 @@
-// Turns the raw Natural Earth countries GeoJSON and GeoNames cities15000.txt
+// Turns the raw Natural Earth countries GeoJSON and GeoNames cities5000.txt
 // into two small, trimmed GeoJSON files ready for tippecanoe. See
 // build-basemap.sh and scripts/README.md.
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -20,8 +20,8 @@ const countries = {
 };
 writeFileSync(countriesOutPath, JSON.stringify(countries));
 
-// cities15000.txt is GeoNames' tab-separated dump, one row per populated
-// place with population >= 15000:
+// cities5000.txt is GeoNames' tab-separated dump, one row per populated
+// place with population >= 5000:
 // geonameid, name, asciiname, alternatenames, lat, lng, feature class,
 // feature code, country code, cc2, admin1, admin2, admin3, admin4,
 // population, elevation, dem, timezone, modification date

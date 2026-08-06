@@ -17,7 +17,7 @@ config, or rely on nix-direnv / `--extra-experimental-features "nix-command flak
 - a few photos per entry (client-side resized/re-encoded, stored as blobs)
 - tags (freeform, autocomplete from existing tags, filter timeline by tag)
 - location per entry (geolocation api for coords + free-text place name; no online reverse geocoding in v1 so it stays offline-friendly)
-- offline map: a locator map on entries with a captured location (lat/lng text stays too), using a small bundled vector basemap (country borders + top 10k cities) by default, with an optional custom tile url (self-hosted or OSM) for more detail when online
+- offline map: a locator map on entries with a captured location (lat/lng text stays too), using a small bundled vector basemap (country borders + top 50k cities) by default, with an optional custom tile url (self-hosted or OSM) for more detail when online
 - "on this day": entries from the same month/day in earlier years, shown on the home screen
 - calendar view: a month grid showing which days have entries; clicking a day shows that day's entries
 - current streak: consecutive days with at least one entry, shown on the home screen
@@ -92,7 +92,7 @@ marker opens that entry.
 - rendering: `maplibre-gl` (open-source WebGL vector tile renderer, no api key)
 - offline by default: a single bundled `app/static/basemap.pmtiles` file —
   country borders (Natural Earth 1:110m admin-0, public domain) plus the top
-  10,000 cities by population (GeoNames `cities15000`, CC BY 4.0 — credited
+  50,000 cities by population (GeoNames `cities5000`, CC BY 4.0 — credited
   in `/settings`). read via the `pmtiles` library's HTTP range-request
   reader: no backend, no COOP/COEP, just another static file the service
   worker precaches alongside everything else
@@ -104,7 +104,7 @@ marker opens that entry.
   tile usage policy disallows unauthorized embedded use at any real scale
 - rebuilding the basemap: `scripts/build-basemap.sh` (documented in
   `scripts/README.md`) downloads Natural Earth + GeoNames, filters/sorts to
-  the top 10k cities by population, and runs `tippecanoe` to produce
+  the top 50k cities by population, and runs `tippecanoe` to produce
   `basemap.pmtiles`. not run automatically as part of the build — the
   output is small and stable enough to just commit, like the vendored
   sqlite amalgamation in `server/lib/`; re-run only when refreshing the

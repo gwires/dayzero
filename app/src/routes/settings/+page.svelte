@@ -117,7 +117,7 @@
 		onblur={save}
 	/>
 	<p class="filter-banner">
-		leave empty to use the bundled offline basemap (country borders + top 10k cities, ©
+		leave empty to use the bundled offline basemap (country borders + top 50k cities, ©
 		<a href="https://naturalearthdata.com">Natural Earth</a>,
 		<a href="https://geonames.org">GeoNames</a> CC BY 4.0). set a raster tile url template
 		(self-hosted, or osm.org if you've read and accept
