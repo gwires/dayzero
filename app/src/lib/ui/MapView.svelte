@@ -10,8 +10,31 @@
 		setWorkerUrl,
 		type StyleSpecification
 	} from 'maplibre-gl';
-	import { Protocol } from 'pmtiles';
+	import { FileSource, PMTiles, Protocol } from 'pmtiles';
+	import { Capacitor } from '@capacitor/core';
 	import 'maplibre-gl/dist/maplibre-gl.css';
+
+	// Capacitor Android's local WebView server has a real bug: for a Range
+	// request it returns 206 + a Content-Range header, but the *body* is the
+	// entire unsliced file regardless of the requested range (see
+	// WebViewLocalServer.handleLocalRequest in @capacitor/android — the
+	// InputStream it returns is never actually seeked/truncated to
+	// fromRange/range). pmtiles relies on real byte-range responses to fetch
+	// just the header/directory/tile chunks it needs, so every fetch past the
+	// first silently returns the wrong bytes and vector tiles fail to decode
+	// (blank map, no fill or labels). Rangeless GETs hit a different, correct
+	// code path, so on native we sidestep the bug entirely by fetching the
+	// whole basemap once and reading it from memory instead of over HTTP.
+	// Cached at module scope so repeated MapView mounts don't redownload it.
+	let nativeBasemapPromise: Promise<PMTiles> | undefined;
+	function getNativeBasemap(): Promise<PMTiles> {
+		if (!nativeBasemapPromise) {
+			nativeBasemapPromise = fetch('/basemap.pmtiles')
+				.then((res) => res.blob())
+				.then((blob) => new PMTiles(new FileSource(new File([blob], '/basemap.pmtiles'))));
+		}
+		return nativeBasemapPromise;
+	}
 
 	// vite can't statically discover maplibre's internally-constructed worker
 	// url, so point it at the static copy vite.config.ts places at the site
@@ -122,33 +145,46 @@
 	onMount(() => {
 		protocol = new Protocol();
 		addProtocol('pmtiles', protocol.tile);
+		let cancelled = false;
 
-		const hasMarkers = markers && markers.length > 0;
-		const instance = new MaplibreMap({
-			container,
-			style: tileUrl ? rasterStyle(tileUrl) : offlineStyle,
-			center: hasMarkers ? [markers![0].lng, markers![0].lat] : [lng ?? 0, lat ?? 0],
-			zoom: hasMarkers ? 2 : tileUrl ? 12 : 6,
-			attributionControl: { compact: true }
-		});
-		instance.addControl(new NavigationControl({ showCompass: false }), 'top-right');
-
-		if (hasMarkers) {
-			const bounds = new LngLatBounds();
-			for (const m of markers!) {
-				const el = document.createElement('button');
-				el.type = 'button';
-				el.className = 'map-marker-button';
-				el.setAttribute('aria-label', 'open entry');
-				el.onclick = () => onMarkerClick?.(m.id);
-				new Marker({ element: el }).setLngLat([m.lng, m.lat]).addTo(instance);
-				bounds.extend([m.lng, m.lat]);
+		async function init() {
+			if (Capacitor.isNativePlatform() && !tileUrl) {
+				protocol!.add(await getNativeBasemap());
 			}
-			instance.fitBounds(bounds, { padding: 40, maxZoom: 10, animate: false });
-		} else if (lat != null && lng != null) {
-			new Marker().setLngLat([lng, lat]).addTo(instance);
+			if (cancelled) return;
+
+			const hasMarkers = markers && markers.length > 0;
+			const instance = new MaplibreMap({
+				container,
+				style: tileUrl ? rasterStyle(tileUrl) : offlineStyle,
+				center: hasMarkers ? [markers![0].lng, markers![0].lat] : [lng ?? 0, lat ?? 0],
+				zoom: hasMarkers ? 2 : tileUrl ? 12 : 6,
+				attributionControl: { compact: true }
+			});
+			instance.addControl(new NavigationControl({ showCompass: false }), 'top-right');
+
+			if (hasMarkers) {
+				const bounds = new LngLatBounds();
+				for (const m of markers!) {
+					const el = document.createElement('button');
+					el.type = 'button';
+					el.className = 'map-marker-button';
+					el.setAttribute('aria-label', 'open entry');
+					el.onclick = () => onMarkerClick?.(m.id);
+					new Marker({ element: el }).setLngLat([m.lng, m.lat]).addTo(instance);
+					bounds.extend([m.lng, m.lat]);
+				}
+				instance.fitBounds(bounds, { padding: 40, maxZoom: 10, animate: false });
+			} else if (lat != null && lng != null) {
+				new Marker().setLngLat([lng, lat]).addTo(instance);
+			}
+			map = instance;
 		}
-		map = instance;
+		init();
+
+		return () => {
+			cancelled = true;
+		};
 	});
 
 	onDestroy(() => {

@@ -110,6 +110,42 @@ which of the plausible triggers it was — on-device testing of the resulting
 APK (does `/`, `/tags`, `/calendar`, `/map` load without the db-init error)
 is still the open item to actually confirm or refute it.
 
+## 3. offline basemap shows no country outlines or city labels in the APK — FIXED
+
+**Symptom**: in the Android APK, the map view renders (background color, nav
+control) but none of the bundled offline basemap's vector data shows up — no
+country outlines, no city dots or labels. Desktop/web is unaffected.
+
+**Cause — Capacitor Android's local WebView server mishandles HTTP Range
+requests**: `MapView.svelte`'s offline style loads `basemap.pmtiles` via the
+`pmtiles://` protocol (see the `pmtiles` npm package), which works by issuing
+real HTTP byte-range requests (`Range: bytes=X-Y`) to read just the header,
+then directory, then individual tile chunks out of the file — it never
+downloads the whole 2.7MB archive up front. `@capacitor/android`'s
+`WebViewLocalServer.handleLocalRequest`
+(`node_modules/@capacitor/android/capacitor/src/main/java/com/getcapacitor/WebViewLocalServer.java`,
+~line 339) has a bug in that path: it sets a `206`/`Content-Range` header
+based on the requested range, but returns the **entire, unsliced file
+stream** as the response body regardless of what range was asked for — the
+`InputStream` is never seeked or truncated to `fromRange`/`range`. So every
+`pmtiles` range fetch after the very first gets back the wrong bytes (always
+starting from byte 0 of the file), and `pmtiles`' own directory/tile parsing
+silently decodes garbage, producing no renderable features. This is an
+upstream bug in `@capacitor/android`'s bundled server, not something fixable
+from this repo's Gradle project.
+
+**Fix (2026-08-06)**: `MapView.svelte` now detects
+`Capacitor.isNativePlatform()` and, only when using the bundled offline style
+(not a custom raster tile url), fetches `basemap.pmtiles` once via a plain
+(non-ranged) `fetch()` — which hits a different, correct code path in the
+same server — and hands the resulting `Blob` to `pmtiles`' `FileSource`,
+registering it on the `Protocol` instance so all `pmtiles://` lookups resolve
+to the in-memory copy instead of issuing HTTP range requests at all. The
+archive is cached at module scope so repeated map views (entry editor, map
+overview) don't redownload/reparse it. Web keeps the original lazy,
+range-based fetching, since real static file servers handle `Range` requests
+correctly and it avoids pulling the whole file for a single small viewport.
+
 ## meta: errors are invisible on mobile
 
 Both bugs were painful to diagnose because the app has no way to show
