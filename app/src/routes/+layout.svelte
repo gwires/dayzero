@@ -2,7 +2,9 @@
 	import { onMount } from 'svelte';
 	import { resolve } from '$app/paths';
 	import favicon from '$lib/assets/favicon.svg';
+	import { initGlobalErrorHandlers } from '$lib/errors';
 	import { initSyncEngine } from '$lib/sync/engine';
+	import ErrorModal from '$lib/ui/ErrorModal.svelte';
 	import '../app.css';
 
 	let { children } = $props();
@@ -16,13 +18,20 @@
 			useRegisterSW({ immediate: true });
 		})();
 
-		return initSyncEngine();
+		const offErrors = initGlobalErrorHandlers();
+		const offSync = initSyncEngine();
+		return () => {
+			offErrors();
+			offSync();
+		};
 	});
 </script>
 
 <svelte:head>
 	<link rel="icon" href={favicon} />
 </svelte:head>
+
+<ErrorModal />
 
 <div class="app">
 	<nav>
