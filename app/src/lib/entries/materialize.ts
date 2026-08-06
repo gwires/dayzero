@@ -1,6 +1,6 @@
 import type * as Y from 'yjs';
 import { DEFAULT_DIARY_ID } from '$lib/diaries/ids';
-import { getMeta, getTags, getText } from './ydoc';
+import { getMeta, getPhotos, getTags, getText } from './ydoc';
 
 export interface MaterializedEntry {
 	id: string;
@@ -19,7 +19,7 @@ export function materialize(
 	id: string,
 	doc: Y.Doc,
 	updatedAt: string = new Date().toISOString()
-): { entry: MaterializedEntry; tags: string[] } {
+): { entry: MaterializedEntry; tags: string[]; photos: string[] } {
 	const meta = getMeta(doc);
 	const tags = getTags(doc);
 
@@ -35,6 +35,7 @@ export function materialize(
 			deleted: meta.get('deleted') ? 1 : 0,
 			updated_at: updatedAt
 		},
-		tags: [...tags.keys()].filter((tag) => tags.get(tag) === true).sort()
+		tags: [...tags.keys()].filter((tag) => tags.get(tag) === true).sort(),
+		photos: [...getPhotos(doc).keys()].sort()
 	};
 }

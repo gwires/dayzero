@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
-import { getMeta, getTags, getText } from './ydoc';
+import { getMeta, getPhotos, getTags, getText } from './ydoc';
 import { materialize } from './materialize';
 
 function baseDoc(): Y.Doc {
@@ -33,7 +33,7 @@ function diverge(): { a: Y.Doc; b: Y.Doc } {
 describe('materialize', () => {
 	it('defaults an empty doc to blank fields', () => {
 		const doc = new Y.Doc();
-		const { entry, tags } = materialize('entry-empty', doc, '2026-01-01T00:00:00.000Z');
+		const { entry, tags, photos } = materialize('entry-empty', doc, '2026-01-01T00:00:00.000Z');
 		expect(entry).toEqual({
 			id: 'entry-empty',
 			diary_id: 'default',
@@ -46,6 +46,14 @@ describe('materialize', () => {
 			updated_at: '2026-01-01T00:00:00.000Z'
 		});
 		expect(tags).toEqual([]);
+		expect(photos).toEqual([]);
+	});
+
+	it('derives sorted photo hashes from the doc photos map', () => {
+		const doc = baseDoc();
+		getPhotos(doc).set('bbb', { mime: 'image/webp', width: 10, height: 10 });
+		getPhotos(doc).set('aaa', { mime: 'image/webp', width: 20, height: 20 });
+		expect(materialize('entry-1', doc).photos).toEqual(['aaa', 'bbb']);
 	});
 
 	it('converges to identical state regardless of merge order', () => {

@@ -61,5 +61,17 @@ export const migrations: string[] = [
 		doc_id text primary key,
 		snapshot blob not null
 	);
+	`,
+
+	// 3: entry_photos — mirrors entry_tags, materialized from each entry's
+	// `photos` Y.Map, so the /photos page can list every photo across all
+	// entries (with a join back to its entry) without loading every doc.
+	`
+	create table entry_photos (
+		entry_id text not null references entries(id) on delete cascade,
+		hash text not null,
+		primary key (entry_id, hash)
+	);
+	create index entry_photos_hash on entry_photos(hash);
 	`
 ];

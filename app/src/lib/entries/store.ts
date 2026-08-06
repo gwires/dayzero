@@ -21,7 +21,7 @@ export function captureUpdate(doc: Y.Doc, mutate: (doc: Y.Doc) => void): Uint8Ar
 }
 
 /**
- * writes the entry/entry_tags/ydocs projection of `doc`, and — only when
+ * writes the entry/entry_tags/entry_photos/ydocs projection of `doc`, and — only when
  * `outboxUpdate` is given — queues that update for push. remote updates
  * (see `applyRemoteUpdate`) pass `null`: they came *from* the sync log
  * already, so re-queuing them would just echo them back to the server.
@@ -33,7 +33,7 @@ async function writeMaterialized(
 ): Promise<MaterializedEntry> {
 	const db = getDb();
 	const now = new Date().toISOString();
-	const { entry, tags } = materialize(id, doc, now);
+	const { entry, tags, photos } = materialize(id, doc, now);
 
 	const stmts = [
 		{
@@ -65,6 +65,11 @@ async function writeMaterialized(
 		...tags.map((tag) => ({
 			sql: `insert into entry_tags (entry_id, tag) values (?, ?)`,
 			params: [id, tag]
+		})),
+		{ sql: `delete from entry_photos where entry_id = ?`, params: [id] },
+		...photos.map((hash) => ({
+			sql: `insert into entry_photos (entry_id, hash) values (?, ?)`,
+			params: [id, hash]
 		})),
 		{
 			sql: `insert into ydocs (entry_id, snapshot) values (?, ?)
@@ -331,6 +336,27 @@ export function listPhotos(doc: Y.Doc): PhotoEntry[] {
 	return [...getPhotos(doc).entries()]
 		.map(([hash, meta]) => ({ hash, ...meta }))
 		.sort((a, b) => a.hash.localeCompare(b.hash));
+}
+
+export interface PhotoWithEntry extends PhotoEntry {
+	entry_id: string;
+	entry_date: string | null;
+}
+
+/** every photo across all (non-deleted) entries, newest entry first, for the /photos overview. */
+export async function listAllPhotos(diaryId?: string): Promise<PhotoWithEntry[]> {
+	const db = getDb();
+	const diaryCond = diaryId ? ` and e.diary_id = ?` : ``;
+	const diaryParams = diaryId ? [diaryId] : [];
+	return db.select<PhotoWithEntry>({
+		sql: `select a.id as hash, a.mime, a.width, a.height, e.id as entry_id, e.entry_date as entry_date
+			from entry_photos p
+			join entries e on e.id = p.entry_id
+			join attachments a on a.id = p.hash
+			where e.deleted = 0${diaryCond}
+			order by e.entry_date desc, e.updated_at desc, p.hash asc`,
+		params: diaryParams
+	});
 }
 
 /**
