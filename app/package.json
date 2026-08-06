@@ -43,6 +43,7 @@
 	"dependencies": {
 		"@capacitor/android": "^8.5.0",
 		"@capacitor/core": "^8.5.0",
+		"@capacitor/filesystem": "^8.1.2",
 		"@capacitor/geolocation": "^8.2.0",
 		"@sqlite.org/sqlite-wasm": "^3.53.0-build1",
 		"dompurify": "^3.4.13",

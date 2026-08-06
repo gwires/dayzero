@@ -20,6 +20,7 @@
 	let syncError = $state('');
 
 	let exporting = $state(false);
+	let exportedPath = $state('');
 	let importing = $state(false);
 	let importError = $state('');
 	let storageUsage = $state<{ usageBytes: number; quotaBytes: number } | undefined>();
@@ -46,8 +47,9 @@
 
 	async function handleExport() {
 		exporting = true;
+		exportedPath = '';
 		try {
-			await exportBackup();
+			exportedPath = (await exportBackup()) ?? '';
 		} finally {
 			exporting = false;
 		}
@@ -164,6 +166,7 @@
 	<button type="button" onclick={handleExport} disabled={exporting}>
 		{exporting ? 'exporting…' : 'export backup'}
 	</button>
+	{#if exportedPath}<p class="filter-banner">saved to {exportedPath}</p>{/if}
 	<label class="import-label">
 		import backup
 		<input
