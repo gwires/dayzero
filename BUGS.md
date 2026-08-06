@@ -73,6 +73,16 @@ message instead of `loading…`.
 **Part 2 — still open**: with the error now visible on the phone, re-test and
 fix the actual trigger (could be as simple as "serve over HTTPS").
 
+**Update (2026-08-06)**: milestone 10 (see `APK-PLAN.md`, `PLAN.md`) packages
+the app as an Android APK specifically because of the insecure-context
+hypothesis above — a Capacitor-wrapped APK serves the app from a bundled
+`https://localhost` origin, which is a secure context by construction,
+sidestepping the failure mode entirely if that was the trigger. This isn't
+confirmation of the hypothesis, just a fix that should work regardless of
+which of the plausible triggers it was — on-device testing of the resulting
+APK (does `/`, `/tags`, `/calendar`, `/map` load without the db-init error)
+is still the open item to actually confirm or refute it.
+
 ## meta: errors are invisible on mobile
 
 Both bugs were painful to diagnose because the app has no way to show
