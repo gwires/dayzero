@@ -146,6 +146,11 @@ overview) don't redownload/reparse it. Web keeps the original lazy,
 range-based fetching, since real static file servers handle `Range` requests
 correctly and it avoids pulling the whole file for a single small viewport.
 
+**Verified on-device (2026-08-06)**: confirmed working — country outlines
+and city labels render correctly in both the entry locator map and `/map`
+overview on a real device, including after the top-50k-cities basemap
+bump (9012e30).
+
 ## meta: errors are invisible on mobile
 
 Both bugs were painful to diagnose because the app has no way to show

@@ -15,25 +15,17 @@ See [`PLAN.md`](./PLAN.md) for the full architecture and roadmap.
 
 ## Status
 
-Currently implemented (milestones 1–2 of the plan):
+Milestones 1–9 are done: offline-first PWA shell, local SQLite/Yjs storage,
+photos, location, "on this day", calendar/streaks, an offline vector map,
+a working sync protocol (client + Zig server, bearer-token auth required),
+and export/import. Only a Lighthouse pass remains from milestone 9.
 
-- Installable, offline-first PWA shell (`vite-plugin-pwa`, precached app
-  shell, works with no network at all)
-- Local storage: SQLite running in a web worker, persisted via the
-  `opfs-sahpool` VFS (no special HTTP headers required), with numbered SQL
-  migrations
-- Entries as Yjs `Y.Doc`s (markdown text + metadata + tags), materialized
-  into plain SQL rows after every change so the timeline and tag filters are
-  ordinary queries
-- Timeline (`/`, grouped by day), entry editor (`/new`, `/entry/[id]`) with
-  a markdown/preview toggle (sanitized with DOMPurify) and a freeform tag
-  editor, and a tags overview (`/tags`) that filters the timeline
-- A minimal Zig server with `GET /api/health` and the `updates`/`blobs`
-  tables it will use for sync, but no sync protocol wired up yet
-
-Not yet implemented: photos, location, "on this day", the sync protocol
-between client and server, and export/import. See the milestones in
-[`PLAN.md`](./PLAN.md) for what's next.
+Milestone 10 (packaging as an Android APK via Capacitor) is also done —
+native geolocation and native backup export are confirmed working
+on-device; the offline map's Capacitor range-request workaround has passed
+build/lint/test but not yet been confirmed rendering correctly on a real
+device (see `BUGS.md` bug 3). See [`PLAN.md`](./PLAN.md) for the full
+milestone list and architecture.
 
 ## Prerequisites
 
@@ -100,7 +92,7 @@ Configuration is via environment variables:
 | `DAYZERO_PORT`         | `8080`              | port to listen on                 |
 | `DAYZERO_ADDRESS`      | `127.0.0.1`         | address to bind                   |
 | `DAYZERO_DB_PATH`      | `dayzero.sqlite`    | path to the SQLite database file |
-| `DAYZERO_AUTH_TOKEN`   | *(none)*            | bearer token (not enforced yet)   |
+| `DAYZERO_AUTH_TOKEN`   | *(required)*        | bearer token; server refuses to start without one |
 
 The server compiles to a single, dependency-free static binary — SQLite is
 vendored and compiled in rather than linked against the system library.
@@ -115,11 +107,18 @@ zig build          # build zig-out/bin/dayzero-server without running it
 dayzero/
   flake.nix  flake.lock  .envrc   # nix devshell
   PLAN.md                          # architecture + full milestone roadmap
+  BUGS.md                          # known mobile/APK bugs and their status
+  APK-PLAN.md                      # Capacitor packaging plan (milestone 10)
+  docs/protocol.md                 # sync wire protocol, kept in lockstep with client + server
+  scripts/                         # build-basemap.sh, build-glyphs.sh (offline map assets)
   app/
     src/lib/db/       # sqlite-wasm worker, migrations, typed rpc
     src/lib/entries/  # Y.Doc wrapper, materializer, entry store
-    src/lib/ui/        # shared UI components (EntryEditor, ...)
-    src/routes/        # timeline, new/edit entry, tags, settings
+    src/lib/sync/     # api client, outbox, blob fetcher, sync engine
+    src/lib/settings/ # backup export/import
+    src/lib/ui/        # shared UI components (EntryEditor, MapView, ...)
+    src/routes/        # timeline, new/edit entry, tags, calendar, map, settings
+    android/           # Capacitor Android project (milestone 10)
   server/
     src/main.zig  src/config.zig  src/db.zig  src/api.zig
 ```
