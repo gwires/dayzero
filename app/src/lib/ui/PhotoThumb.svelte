@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onDestroy, onMount } from 'svelte';
+	import { resolve } from '$app/paths';
 	import { getAttachmentUrl, type PhotoEntry } from '$lib/entries/store';
 
 	interface Props {
@@ -21,10 +22,16 @@
 </script>
 
 <figure class="photo-thumb">
-	{#if url}
-		<img src={url} alt="" width={photo.width} height={photo.height} />
-	{:else}
-		<div class="photo-thumb-placeholder"></div>
-	{/if}
+	<a
+		class="photo-thumb-link"
+		href={resolve('/photos/[hash]', { hash: photo.hash })}
+		aria-label="view photo full screen"
+	>
+		{#if url}
+			<img src={url} alt="" width={photo.width} height={photo.height} />
+		{:else}
+			<div class="photo-thumb-placeholder"></div>
+		{/if}
+	</a>
 	<button type="button" class="photo-remove" aria-label="remove photo" onclick={onRemove}>×</button>
 </figure>

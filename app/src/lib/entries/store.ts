@@ -359,6 +359,24 @@ export async function listAllPhotos(diaryId?: string): Promise<PhotoWithEntry[]>
 	});
 }
 
+export interface PhotoDayGroup {
+	day: string;
+	photos: PhotoWithEntry[];
+}
+
+// `listAllPhotos` returns rows pre-sorted by entry_date desc, so same-day
+// photos are already adjacent — a single pass is enough to group them.
+export function groupPhotosByDay(list: PhotoWithEntry[]): PhotoDayGroup[] {
+	const groups: PhotoDayGroup[] = [];
+	for (const photo of list) {
+		const day = photo.entry_date ?? 'no date';
+		const last = groups.at(-1);
+		if (last?.day === day) last.photos.push(photo);
+		else groups.push({ day, photos: [photo] });
+	}
+	return groups;
+}
+
 /**
  * resizes/re-encodes the file, stores it content-addressed in `attachments`,
  * and references its hash from the doc's `photos` map. the bytes themselves

@@ -1,6 +1,6 @@
 <script lang="ts">
 	import PhotoGridItem from '$lib/ui/PhotoGridItem.svelte';
-	import { listAllPhotos, type PhotoWithEntry } from '$lib/entries/store';
+	import { groupPhotosByDay, listAllPhotos, type PhotoWithEntry } from '$lib/entries/store';
 	import { currentDiaryFilter } from '$lib/diaries/current.svelte';
 
 	let photos = $state<PhotoWithEntry[]>([]);
@@ -20,25 +20,7 @@
 			});
 	});
 
-	interface DayGroup {
-		day: string;
-		photos: PhotoWithEntry[];
-	}
-
-	// photos arrive pre-sorted by entry_date desc, so same-day photos are
-	// already adjacent — a single pass is enough to group them.
-	function groupByDay(list: PhotoWithEntry[]): DayGroup[] {
-		const groups: DayGroup[] = [];
-		for (const photo of list) {
-			const day = photo.entry_date ?? 'no date';
-			const last = groups.at(-1);
-			if (last?.day === day) last.photos.push(photo);
-			else groups.push({ day, photos: [photo] });
-		}
-		return groups;
-	}
-
-	const grouped = $derived(groupByDay(photos));
+	const grouped = $derived(groupPhotosByDay(photos));
 </script>
 
 <h1>photos</h1>

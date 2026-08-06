@@ -21,7 +21,7 @@
 	});
 </script>
 
-<a class="photo-grid-item" href={resolve('/entry/[id]', { id: photo.entry_id })}>
+<a class="photo-grid-item" href={resolve('/photos/[hash]', { hash: photo.hash })}>
 	{#if url}
 		<img src={url} alt="" width={photo.width} height={photo.height} />
 	{:else}
