@@ -10,6 +10,7 @@
 	import { ALL_DIARIES, type Diary } from '$lib/diaries/ids';
 	import { listDiaries } from '$lib/diaries/ydoc';
 	import { loadDiariesDoc } from '$lib/diaries/store';
+	import { initTheme } from '$lib/settings/theme.svelte';
 	import '../app.css';
 
 	let { children } = $props();
@@ -31,6 +32,7 @@
 	});
 
 	onMount(() => {
+		initTheme();
 		void initCurrentDiary();
 
 		// fire-and-forget: onMount only honors a *synchronously* returned

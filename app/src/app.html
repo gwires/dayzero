@@ -9,6 +9,23 @@
 		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 		<link rel="apple-touch-icon" href="/icons/icon-192.png" />
 		<link rel="manifest" href="/manifest.webmanifest" />
+		<script>
+			// applied synchronously, before first paint, so a pinned light/dark
+			// override (see $lib/settings/theme.svelte.ts) doesn't flash the
+			// system theme first. 'system' (the default) needs no override —
+			// app.css's `color-scheme: light dark` already follows the OS.
+			(function () {
+				try {
+					var t = localStorage.getItem('dayzero_theme');
+					if (t === 'light' || t === 'dark') {
+						document.documentElement.style.colorScheme = t;
+						document
+							.querySelector('meta[name="theme-color"]')
+							.setAttribute('content', t === 'dark' ? '#111111' : '#ffffff');
+					}
+				} catch (e) {}
+			})();
+		</script>
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">

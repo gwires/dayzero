@@ -14,6 +14,7 @@
 	import { DEFAULT_DIARY_ID, ALL_DIARIES, type Diary } from '$lib/diaries/ids';
 	import { currentDiary, selectDiary } from '$lib/diaries/current.svelte';
 	import { countEntriesByDiary } from '$lib/entries/store';
+	import { theme, setTheme, type Theme } from '$lib/settings/theme.svelte';
 	import type * as Y from 'yjs';
 
 	let mapTileUrl = $state('');
@@ -155,6 +156,20 @@
 </script>
 
 <h1>settings</h1>
+
+<section class="field">
+	<label for="theme">theme</label>
+	<select
+		id="theme"
+		class="location-name"
+		value={theme.value}
+		onchange={(e) => setTheme(e.currentTarget.value as Theme)}
+	>
+		<option value="system">system</option>
+		<option value="light">light</option>
+		<option value="dark">dark</option>
+	</select>
+</section>
 
 <section class="field">
 	<label for="map-tile-url">map tile url</label>
