@@ -1,5 +1,20 @@
 # scripts
 
+## build-apk.sh
+
+Builds a debug Android APK: production web build, `npx cap sync android`,
+then `./gradlew assembleDebug`. See `APK-PLAN.md` for how the Android
+project (`app/android/`) was set up.
+
+```sh
+nix develop -c scripts/build-apk.sh
+```
+
+Output lands at `app/android/app/build/outputs/apk/debug/app-debug.apk` —
+sideload it to test on-device. Requires `node`, the Android SDK, and
+JDK 21, all provided by the nix devshell (`flake.nix`); `app/node_modules`
+must already be installed (`npm install` in `app/`, first time only).
+
 ## build-basemap.sh
 
 Rebuilds `app/static/basemap.pmtiles`, the offline vector basemap bundled
