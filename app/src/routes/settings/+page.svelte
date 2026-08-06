@@ -9,6 +9,12 @@
 	} from '$lib/settings/store';
 	import { syncOnce } from '$lib/sync/engine';
 	import { exportBackup, importBackup } from '$lib/settings/backup';
+	import { loadDiariesDoc, createDiary, renameDiary, deleteDiary } from '$lib/diaries/store';
+	import { listDiaries } from '$lib/diaries/ydoc';
+	import { DEFAULT_DIARY_ID, ALL_DIARIES, type Diary } from '$lib/diaries/ids';
+	import { currentDiary, selectDiary } from '$lib/diaries/current.svelte';
+	import { countEntriesByDiary } from '$lib/entries/store';
+	import type * as Y from 'yjs';
 
 	let mapTileUrl = $state('');
 	let saved = $state(false);
@@ -25,6 +31,48 @@
 	let importError = $state('');
 	let storageUsage = $state<{ usageBytes: number; quotaBytes: number } | undefined>();
 
+	let diariesDoc = $state<Y.Doc | undefined>();
+	let diaries = $state<Diary[]>([]);
+	let diaryCounts = $state<Record<string, number>>({});
+	let newDiaryName = $state('');
+	let diaryError = $state('');
+
+	async function reloadDiaries() {
+		diariesDoc = await loadDiariesDoc();
+		diaries = listDiaries(diariesDoc);
+		diaryCounts = await countEntriesByDiary();
+	}
+
+	async function handleCreateDiary() {
+		const name = newDiaryName.trim();
+		if (!name || !diariesDoc) return;
+		diaryError = '';
+		await createDiary(diariesDoc, name);
+		newDiaryName = '';
+		await reloadDiaries();
+	}
+
+	async function handleRenameDiary(id: string, name: string) {
+		const trimmed = name.trim();
+		const current = diaries.find((d) => d.id === id);
+		if (!trimmed || !diariesDoc || trimmed === current?.name) return;
+		await renameDiary(diariesDoc, id, trimmed);
+		await reloadDiaries();
+	}
+
+	async function handleDeleteDiary(id: string) {
+		if (!diariesDoc) return;
+		diaryError = '';
+		if ((diaryCounts[id] ?? 0) > 0) {
+			diaryError = 'this diary still has entries — move or delete them first.';
+			return;
+		}
+		if (!confirm('delete this diary?')) return;
+		await deleteDiary(diariesDoc, id);
+		if (currentDiary.id === id) await selectDiary(ALL_DIARIES);
+		await reloadDiaries();
+	}
+
 	$effect(() => {
 		getMapTileUrl().then((url) => {
 			mapTileUrl = url ?? '';
@@ -38,6 +86,7 @@
 				storageUsage = { usageBytes: estimate.usage, quotaBytes: estimate.quota };
 			}
 		});
+		reloadDiaries();
 	});
 
 	function formatBytes(bytes: number): string {
@@ -155,6 +204,38 @@
 	</button>
 	{#if syncStatus === 'ok'}<span class="filter-banner">synced.</span>{/if}
 	{#if syncStatus === 'error'}<p class="error">sync failed: {syncError}</p>{/if}
+</section>
+
+<section class="field">
+	<h2>diaries</h2>
+	<p class="filter-banner">
+		renames and new diaries sync to other devices; which diary is currently selected is per-device.
+	</p>
+	<ul class="tag-list">
+		{#each diaries as diary (diary.id)}
+			<li>
+				<input
+					class="location-name"
+					value={diary.name}
+					onblur={(e) => handleRenameDiary(diary.id, e.currentTarget.value)}
+				/>
+				<span class="tag-count">{diaryCounts[diary.id] ?? 0}</span>
+				<button
+					type="button"
+					class="danger"
+					disabled={diary.id === DEFAULT_DIARY_ID}
+					onclick={() => handleDeleteDiary(diary.id)}
+				>
+					delete
+				</button>
+			</li>
+		{/each}
+	</ul>
+	<div class="location-row">
+		<input class="location-name" placeholder="new diary name…" bind:value={newDiaryName} />
+		<button type="button" onclick={handleCreateDiary}>create diary</button>
+	</div>
+	{#if diaryError}<p class="error">{diaryError}</p>{/if}
 </section>
 
 <section class="field">

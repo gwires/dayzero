@@ -2,6 +2,8 @@
 // decides *when* to run one (start, `online` event, debounced after local
 // writes). see PLAN.md "sync" and docs/protocol.md.
 import { applyRemoteUpdate } from '$lib/entries/store';
+import { applyRemoteDiariesUpdate } from '$lib/diaries/store';
+import { DIARIES_DOC_ID } from '$lib/diaries/ids';
 import { getSyncCursor, getSyncServerUrl, getSyncToken, setSyncCursor } from '$lib/settings/store';
 import type { SyncConfig } from './api';
 import { pullChanges, pushChanges } from './api';
@@ -27,6 +29,12 @@ async function pull(cfg: SyncConfig): Promise<void> {
 		if (changes.length === 0) break;
 
 		for (const change of changes) {
+			// the diary registry travels the same log as entries but is not an
+			// entry — apply it to its own doc instead of materializing.
+			if (change.entryId === DIARIES_DOC_ID) {
+				await applyRemoteDiariesUpdate(change.update);
+				continue;
+			}
 			const { photos } = await applyRemoteUpdate(change.entryId, change.update);
 			if (photos.length > 0) await fetchMissingBlobs(cfg, photos);
 		}

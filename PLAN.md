@@ -41,20 +41,44 @@ config, or rely on nix-direnv / `--extra-experimental-features "nix-command flak
 - `/tags` and `/?tag=...` tag filtering
 - `/calendar` and `/?date=...` month grid of which days have entries; clicking a day filters the timeline to it
 - `/map` overview map — every entry with a captured location plotted as a marker, tapping one opens that entry
-- `/settings` sync server url + token, map tile url, export/import, storage usage
+- `/settings` sync server url + token, map tile url, export/import, storage usage, diary management
+
+the nav also has a diary switcher (scope the whole app to one diary, or "all diaries") — see "multiple diaries" below
 
 ## entries as CRDTs
 
 each entry is one **yjs `Y.Doc`**, identified by a uuidv7. inside the doc:
 
 - `text: Y.Text` — the markdown body (character-level merge of concurrent edits)
-- `meta: Y.Map` — `entry_date`, `location_lat/lng/name`, `deleted` (tombstone). Y.Map is last-write-wins **per key**, which is exactly right for scalars
+- `meta: Y.Map` — `entry_date`, `diary_id`, `location_lat/lng/name`, `deleted` (tombstone). Y.Map is last-write-wins **per key**, which is exactly right for scalars
 - `tags: Y.Map` — tag name → `true`; removing a tag deletes the key (add/remove of *different* tags on two devices both survive)
 - `photos: Y.Map` — sha-256 → `{mime, width, height}`; the actual bytes are immutable, content-addressed blobs synced separately (blobs can never conflict)
 
 concurrent creation is a non-issue: two devices creating "today's entry" produce two
 docs with different uuids, and a diary may simply have multiple entries per day
 (the timeline groups by day anyway).
+
+## multiple diaries
+
+entries can be grouped into named diaries (like Day One's journals). An
+entry's diary is just another key in its `meta` map (`diary_id`) — a `meta`
+with no `diary_id` means the always-existing **virtual default diary**
+(`id: 'default'`, display name "journal"), so every pre-existing entry lands
+there with no data rewrite.
+
+the diary registry itself is one more well-known `Y.Doc`, reserved id
+`_diaries`, synced through the same append-only log as entries (the server
+treats `entry_id` as an opaque string, so this needs no server changes). It
+holds a single `diaries: Y.Map` from diary id → `{ name, deleted? }`.
+Creating a diary sets a new uuidv7 key; renaming re-sets it with a new name;
+deleting re-sets it with `deleted: true` (a tombstone, mirroring entry
+deletion — entries are never bulk-moved or cascade-deleted, so deleting a
+diary requires it to be empty first). A map entry under the key `'default'`
+overrides the virtual default diary's display name.
+
+which diary is currently selected in the UI is device-local state (stored in
+`sync_state`, not synced) — every device can look at a different diary (or
+"all diaries") independently of what diaries exist.
 
 ## client data model (sqlite, in OPFS)
 
@@ -65,16 +89,17 @@ into plain columns so timeline / tag filter / "on this day" stay ordinary SQL
 
 ```sql
 entries(          -- materialized view of each Y.Doc, rebuilt on change
-  id TEXT PRIMARY KEY, entry_date TEXT, markdown TEXT,
+  id TEXT PRIMARY KEY, diary_id TEXT, entry_date TEXT, markdown TEXT,
   location_lat REAL, location_lng REAL, location_name TEXT,
   deleted INTEGER, updated_at TEXT
 )
 entry_tags(entry_id TEXT, tag TEXT, PRIMARY KEY(entry_id, tag))  -- materialized
 ydocs(entry_id TEXT PRIMARY KEY, snapshot BLOB)   -- merged yjs state (Y.encodeStateAsUpdate)
+meta_ydocs(doc_id TEXT PRIMARY KEY, snapshot BLOB) -- non-entry well-known docs, e.g. `_diaries`
 outbox(entry_id TEXT, update BLOB, created_at TEXT) -- local updates not yet pushed
 attachments(id TEXT PRIMARY KEY, mime TEXT, width INTEGER, height INTEGER,
             bytes BLOB, pushed INTEGER)             -- id = sha-256 of bytes
-sync_state(key TEXT PRIMARY KEY, value TEXT)        -- device id, server cursor
+sync_state(key TEXT PRIMARY KEY, value TEXT)        -- device id, server cursor, current diary scope
 ```
 
 "on this day" is just: `WHERE deleted=0 AND strftime('%m-%d', entry_date) = strftime('%m-%d', 'now') AND entry_date < date('now')`.
@@ -194,6 +219,7 @@ dayzero/
 8. **sync engine**: `app/src/lib/sync/` (api, outbox, blobs, engine, notify), `applyRemoteUpdate` in `entries/store.ts`, `/settings` sync server url + token + manual "sync now", CORS on the server, `sync/api.test.ts` (mocked-fetch unit tests), `server/test-e2e-sync.sh` (real server + vitest sync harness, two simulated devices converging after concurrent offline edits)
 9. **polish**: export/import — done as a single sqlite file (`app/src/lib/settings/backup.ts`), per "defaults chosen" below, not the zip-of-markdown+photos alternative; pwa icons/manifest — done (milestone 1); empty states — done (timeline, `/map`); lighthouse pass — remaining
 10. **android apk**: wraps the static build in Capacitor (`app/capacitor.config.ts`, `app/android/`, see `APK-PLAN.md`) so it installs and runs from a bundled `https://localhost` WebView origin — a secure context, which OPFS (the sqlite storage layer) requires — rather than a hosted/TWA origin; Android SDK + JDK 21 added to the nix devshell (`flake.nix`); native geolocation via `@capacitor/geolocation` (the plain web API gets no permission prompt inside a plain WebView); native backup export via `@capacitor/filesystem` (a Blob + `<a download>` silently no-ops in a WebView); debug APK builds successfully (`./gradlew assembleDebug`) — on-device confirmation of the full app (OPFS-backed pages, native location, native backup export) is the remaining step, see `BUGS.md`
+11. **multiple diaries**: entries can belong to a named diary (`meta.diary_id`, absent = virtual default "journal"); the diary registry is a well-known `_diaries` Y.Doc synced through the existing log (no server changes); a nav diary switcher scopes timeline/on-this-day/streak/calendar/tags/map (device-local selection, not synced); the entry editor's diary select doubles as "move entry"; `/settings` gets a diaries section to create/rename/delete (delete requires the diary to be empty first)
 
 ## verification
 

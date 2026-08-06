@@ -47,5 +47,19 @@ export const migrations: string[] = [
 		key text primary key,
 		value text
 	);
+	`,
+
+	// 2: multiple diaries — entries.diary_id materialized from meta.diary_id
+	// ('default' when the doc has no such key), plus a snapshot table for
+	// non-entry well-known docs (the `_diaries` registry). that snapshot can't
+	// live in `ydocs`, whose entry_id references entries(id).
+	`
+	alter table entries add column diary_id text not null default 'default';
+	create index entries_diary_id on entries(diary_id);
+
+	create table meta_ydocs (
+		doc_id text primary key,
+		snapshot blob not null
+	);
 	`
 ];

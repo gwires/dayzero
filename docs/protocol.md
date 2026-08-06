@@ -9,6 +9,11 @@ CRDTs" for the design rationale; this doc is the wire-level contract kept in
 lockstep with both the zig server (`server/src/api.zig`) and the client sync
 engine (`app/src/lib/sync/`).
 
+Clients reserve the `entry_id` `_diaries` for the diary-registry Y.Doc (see
+PLAN.md "multiple diaries"). The server needs no knowledge of this — any
+opaque id is already accepted, and it travels through push/pull exactly like
+an entry's updates.
+
 Cross-origin: the PWA and the server are separate origins in general (a
 self-hosted service, not served from the app's own origin), so the server
 sends CORS headers (`Access-Control-Allow-Origin: *`) and answers the

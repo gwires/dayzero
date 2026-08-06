@@ -4,6 +4,7 @@
 	import MapView, { type MapMarker } from '$lib/ui/MapView.svelte';
 	import { listEntriesWithLocation } from '$lib/entries/store';
 	import { getMapTileUrl } from '$lib/settings/store';
+	import { currentDiaryFilter } from '$lib/diaries/current.svelte';
 
 	let markers = $state<MapMarker[]>([]);
 	let mapTileUrl = $state<string | undefined>();
@@ -11,7 +12,7 @@
 	let error = $state<string | undefined>();
 
 	$effect(() => {
-		Promise.all([listEntriesWithLocation(), getMapTileUrl()])
+		Promise.all([listEntriesWithLocation(currentDiaryFilter()), getMapTileUrl()])
 			.then(([entries, tileUrl]) => {
 				markers = entries
 					.filter((e) => e.location_lat != null && e.location_lng != null)

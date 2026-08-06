@@ -67,3 +67,14 @@ export async function getSyncCursor(): Promise<number> {
 export function setSyncCursor(cursor: number): Promise<void> {
 	return setSetting(SYNC_CURSOR_KEY, String(cursor));
 }
+
+const CURRENT_DIARY_KEY = 'current_diary_id';
+
+/** device-local diary scope for the ui — a diary id, or 'all'. not synced. */
+export async function getCurrentDiaryId(): Promise<string> {
+	return (await getSetting(CURRENT_DIARY_KEY)) ?? 'all';
+}
+
+export function setCurrentDiaryId(id: string): Promise<void> {
+	return setSetting(CURRENT_DIARY_KEY, id);
+}

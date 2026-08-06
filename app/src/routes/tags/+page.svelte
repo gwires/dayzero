@@ -1,13 +1,14 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { listTags } from '$lib/entries/store';
+	import { currentDiaryFilter } from '$lib/diaries/current.svelte';
 
 	let tags = $state<{ tag: string; count: number }[]>([]);
 	let loading = $state(true);
 	let error = $state<string | undefined>();
 
 	$effect(() => {
-		listTags()
+		listTags(currentDiaryFilter())
 			.then((rows) => {
 				tags = rows;
 			})

@@ -1,8 +1,10 @@
 import type * as Y from 'yjs';
+import { DEFAULT_DIARY_ID } from '$lib/diaries/ids';
 import { getMeta, getTags, getText } from './ydoc';
 
 export interface MaterializedEntry {
 	id: string;
+	diary_id: string;
 	entry_date: string | null;
 	markdown: string;
 	location_lat: number | null;
@@ -24,6 +26,7 @@ export function materialize(
 	return {
 		entry: {
 			id,
+			diary_id: (meta.get('diary_id') as string | undefined) ?? DEFAULT_DIARY_ID,
 			entry_date: (meta.get('entry_date') as string | undefined) ?? null,
 			markdown: getText(doc).toString(),
 			location_lat: (meta.get('location_lat') as number | undefined) ?? null,

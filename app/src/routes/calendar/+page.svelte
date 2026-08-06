@@ -1,6 +1,7 @@
 <script lang="ts">
 	import { resolve } from '$app/paths';
 	import { listEntryDatesInMonth } from '$lib/entries/store';
+	import { currentDiaryFilter } from '$lib/diaries/current.svelte';
 
 	const now = new Date();
 	let year = $state(now.getFullYear());
@@ -14,11 +15,11 @@
 		return String(n).padStart(2, '0');
 	}
 
-	async function load(y: number, m: number) {
+	async function load(y: number, m: number, diaryId: string | undefined) {
 		loading = true;
 		error = undefined;
 		try {
-			const rows = await listEntryDatesInMonth(y, m);
+			const rows = await listEntryDatesInMonth(y, m, diaryId);
 			markedDates = new Set(rows.map((row) => row.date));
 		} catch (err) {
 			error = err instanceof Error ? err.message : String(err);
@@ -28,7 +29,7 @@
 	}
 
 	$effect(() => {
-		load(year, month);
+		load(year, month, currentDiaryFilter());
 	});
 
 	function prevMonth() {

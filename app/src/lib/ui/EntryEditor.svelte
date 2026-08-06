@@ -6,11 +6,13 @@
 	import MapView from './MapView.svelte';
 	import type { PhotoEntry } from '$lib/entries/store';
 	import { getMapTileUrl } from '$lib/settings/store';
+	import { DEFAULT_DIARY_ID, type Diary } from '$lib/diaries/ids';
 
 	export interface EntryEditPayload {
 		entryDate: string;
 		markdown: string;
 		tags: string[];
+		diaryId: string;
 		locationLat: number | null;
 		locationLng: number | null;
 		locationName: string | null;
@@ -20,6 +22,8 @@
 		initialEntryDate: string;
 		initialMarkdown?: string;
 		initialTags?: string[];
+		initialDiaryId?: string;
+		diaries?: Diary[];
 		initialLocationLat?: number | null;
 		initialLocationLng?: number | null;
 		initialLocationName?: string | null;
@@ -38,6 +42,8 @@
 		initialEntryDate,
 		initialMarkdown = '',
 		initialTags = [],
+		initialDiaryId = DEFAULT_DIARY_ID,
+		diaries = [],
 		initialLocationLat = null,
 		initialLocationLng = null,
 		initialLocationName = null,
@@ -60,6 +66,8 @@
 	let markdown = $state(initialMarkdown);
 	// svelte-ignore state_referenced_locally
 	let tags = $state([...initialTags]);
+	// svelte-ignore state_referenced_locally
+	let diaryId = $state(initialDiaryId);
 	// svelte-ignore state_referenced_locally
 	let locationLat = $state(initialLocationLat);
 	// svelte-ignore state_referenced_locally
@@ -208,6 +216,7 @@
 			entryDate,
 			markdown,
 			tags,
+			diaryId,
 			locationLat,
 			locationLng,
 			locationName: locationName.trim() || null
@@ -220,6 +229,17 @@
 		date
 		<input type="date" bind:value={entryDate} />
 	</label>
+
+	{#if diaries.length > 1}
+		<label class="field">
+			diary
+			<select bind:value={diaryId}>
+				{#each diaries as diary (diary.id)}
+					<option value={diary.id}>{diary.name}</option>
+				{/each}
+			</select>
+		</label>
+	{/if}
 
 	<div class="editor-toolbar">
 		<button type="button" onclick={() => (preview = false)} disabled={!preview}>write</button>

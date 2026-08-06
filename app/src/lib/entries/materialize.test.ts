@@ -36,6 +36,7 @@ describe('materialize', () => {
 		const { entry, tags } = materialize('entry-empty', doc, '2026-01-01T00:00:00.000Z');
 		expect(entry).toEqual({
 			id: 'entry-empty',
+			diary_id: 'default',
 			entry_date: null,
 			markdown: '',
 			location_lat: null,
@@ -106,5 +107,16 @@ describe('materialize', () => {
 		Y.applyUpdate(merged, Y.encodeStateAsUpdate(a));
 
 		expect(materialize('entry-1', merged).entry.deleted).toBe(1);
+	});
+
+	it('materializes diary_id as "default" when the doc has no such key', () => {
+		const doc = baseDoc();
+		expect(materialize('entry-1', doc).entry.diary_id).toBe('default');
+	});
+
+	it('materializes diary_id from meta.diary_id when set', () => {
+		const doc = baseDoc();
+		getMeta(doc).set('diary_id', 'abc');
+		expect(materialize('entry-1', doc).entry.diary_id).toBe('abc');
 	});
 });

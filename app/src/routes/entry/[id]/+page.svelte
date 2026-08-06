@@ -12,12 +12,16 @@
 		updateEntry,
 		type PhotoEntry
 	} from '$lib/entries/store';
+	import { type Diary } from '$lib/diaries/ids';
+	import { listDiaries } from '$lib/diaries/ydoc';
+	import { loadDiariesDoc } from '$lib/diaries/store';
 
 	let { data } = $props();
 
 	let saving = $state(false);
 	let error = $state<string | undefined>();
 	let existingTags = $state<string[]>([]);
+	let diaries = $state<Diary[]>([]);
 	// svelte-ignore state_referenced_locally
 	let photos = $state<PhotoEntry[]>(data.photos);
 	let photosBusy = $state(false);
@@ -25,6 +29,9 @@
 	$effect(() => {
 		listTags().then((rows) => {
 			existingTags = rows.map((row) => row.tag);
+		});
+		loadDiariesDoc().then((doc) => {
+			diaries = listDiaries(doc);
 		});
 	});
 
@@ -98,6 +105,8 @@
 		initialEntryDate={data.entryDate}
 		initialMarkdown={data.markdown}
 		initialTags={data.tags}
+		initialDiaryId={data.diaryId}
+		{diaries}
 		initialLocationLat={data.locationLat}
 		initialLocationLng={data.locationLng}
 		initialLocationName={data.locationName}

@@ -2,13 +2,14 @@ import * as Y from 'yjs';
 import { v7 as uuidv7 } from 'uuid';
 import { getDb } from '$lib/db/client';
 import { notifyLocalWrite } from '$lib/sync/notify';
+import { DEFAULT_DIARY_ID } from '$lib/diaries/ids';
 import { getMeta, getPhotos, getTags, getText } from './ydoc';
 import { materialize, type MaterializedEntry } from './materialize';
 import { encodePhoto } from './photos';
 import { computeStreak } from './streak';
 
 /** captures the single update produced by a doc mutation, for the outbox. */
-function captureUpdate(doc: Y.Doc, mutate: (doc: Y.Doc) => void): Uint8Array {
+export function captureUpdate(doc: Y.Doc, mutate: (doc: Y.Doc) => void): Uint8Array {
 	let update: Uint8Array | undefined;
 	const onUpdate = (u: Uint8Array) => {
 		update = u;
@@ -37,9 +38,10 @@ async function writeMaterialized(
 	const stmts = [
 		{
 			sql: `insert into entries
-				(id, entry_date, markdown, location_lat, location_lng, location_name, deleted, updated_at)
-				values (?, ?, ?, ?, ?, ?, ?, ?)
+				(id, diary_id, entry_date, markdown, location_lat, location_lng, location_name, deleted, updated_at)
+				values (?, ?, ?, ?, ?, ?, ?, ?, ?)
 				on conflict(id) do update set
+					diary_id = excluded.diary_id,
 					entry_date = excluded.entry_date,
 					markdown = excluded.markdown,
 					location_lat = excluded.location_lat,
@@ -49,6 +51,7 @@ async function writeMaterialized(
 					updated_at = excluded.updated_at`,
 			params: [
 				entry.id,
+				entry.diary_id,
 				entry.entry_date,
 				entry.markdown,
 				entry.location_lat,
@@ -106,6 +109,7 @@ export interface EntryEdits {
 	entryDate: string;
 	markdown: string;
 	tags: string[];
+	diaryId: string;
 	locationLat?: number | null;
 	locationLng?: number | null;
 	locationName?: string | null;
@@ -122,6 +126,7 @@ export function applyEdits(doc: Y.Doc, data: EntryEdits): void {
 	const tagsMap = getTags(doc);
 
 	meta.set('entry_date', data.entryDate);
+	meta.set('diary_id', data.diaryId);
 
 	if (data.locationLat != null) meta.set('location_lat', data.locationLat);
 	else meta.delete('location_lat');
@@ -152,6 +157,7 @@ export async function createEntry(
 			entryDate: opts.entryDate,
 			markdown: opts.markdown ?? '',
 			tags: opts.tags ?? [],
+			diaryId: opts.diaryId ?? DEFAULT_DIARY_ID,
 			locationLat: opts.locationLat,
 			locationLng: opts.locationLng,
 			locationName: opts.locationName
@@ -189,28 +195,32 @@ export async function deleteEntry(id: string, doc: Y.Doc): Promise<void> {
 }
 
 export async function listEntries(
-	opts: { tag?: string; date?: string } = {}
+	opts: { tag?: string; date?: string; diaryId?: string } = {}
 ): Promise<MaterializedEntry[]> {
 	const db = getDb();
+	const diaryCond = opts.diaryId ? ` and diary_id = ?` : ``;
+	const diaryParams = opts.diaryId ? [opts.diaryId] : [];
 	if (opts.date) {
 		return db.select<MaterializedEntry>({
 			sql: `select * from entries
-				where deleted = 0 and entry_date = ?
+				where deleted = 0 and entry_date = ?${diaryCond}
 				order by updated_at desc`,
-			params: [opts.date]
+			params: [opts.date, ...diaryParams]
 		});
 	}
 	if (opts.tag) {
 		return db.select<MaterializedEntry>({
 			sql: `select e.* from entries e
 				join entry_tags t on t.entry_id = e.id
-				where e.deleted = 0 and t.tag = ?
+				where e.deleted = 0 and t.tag = ?${opts.diaryId ? ` and e.diary_id = ?` : ``}
 				order by e.entry_date desc, e.updated_at desc`,
-			params: [opts.tag]
+			params: [opts.tag, ...diaryParams]
 		});
 	}
 	return db.select<MaterializedEntry>({
-		sql: `select * from entries where deleted = 0 order by entry_date desc, updated_at desc`
+		sql: `select * from entries where deleted = 0${diaryCond}
+			order by entry_date desc, updated_at desc`,
+		params: diaryParams
 	});
 }
 
@@ -220,40 +230,52 @@ export async function listEntries(
  * = strftime('%m-%d', 'now') AND entry_date < date('now')".
  */
 export async function listOnThisDay(
-	referenceDate: Date = new Date()
+	referenceDate: Date = new Date(),
+	diaryId?: string
 ): Promise<MaterializedEntry[]> {
 	const db = getDb();
 	const today = referenceDate.toISOString().slice(0, 10);
+	const diaryCond = diaryId ? ` and diary_id = ?` : ``;
+	const diaryParams = diaryId ? [diaryId] : [];
 	return db.select<MaterializedEntry>({
 		sql: `select * from entries
 			where deleted = 0
 				and strftime('%m-%d', entry_date) = strftime('%m-%d', ?)
-				and entry_date < ?
+				and entry_date < ?${diaryCond}
 			order by entry_date desc`,
-		params: [today, today]
+		params: [today, today, ...diaryParams]
 	});
 }
 
 /** which days in a given month (1-12) have at least one entry, for the calendar view. */
 export async function listEntryDatesInMonth(
 	year: number,
-	month: number
+	month: number,
+	diaryId?: string
 ): Promise<{ date: string; count: number }[]> {
 	const db = getDb();
 	const monthStr = `${year}-${String(month).padStart(2, '0')}`;
+	const diaryCond = diaryId ? ` and diary_id = ?` : ``;
+	const diaryParams = diaryId ? [diaryId] : [];
 	return db.select<{ date: string; count: number }>({
 		sql: `select entry_date as date, count(*) as count from entries
-			where deleted = 0 and strftime('%Y-%m', entry_date) = ?
+			where deleted = 0 and strftime('%Y-%m', entry_date) = ?${diaryCond}
 			group by entry_date`,
-		params: [monthStr]
+		params: [monthStr, ...diaryParams]
 	});
 }
 
 /** consecutive days with at least one entry, ending today (or yesterday). */
-export async function getCurrentStreak(referenceDate: Date = new Date()): Promise<number> {
+export async function getCurrentStreak(
+	referenceDate: Date = new Date(),
+	diaryId?: string
+): Promise<number> {
 	const db = getDb();
+	const diaryCond = diaryId ? ` and diary_id = ?` : ``;
+	const diaryParams = diaryId ? [diaryId] : [];
 	const rows = await db.select<{ entry_date: string }>({
-		sql: `select distinct entry_date from entries where deleted = 0 and entry_date is not null`
+		sql: `select distinct entry_date from entries where deleted = 0 and entry_date is not null${diaryCond}`,
+		params: diaryParams
 	});
 	return computeStreak(
 		rows.map((row) => row.entry_date),
@@ -262,24 +284,39 @@ export async function getCurrentStreak(referenceDate: Date = new Date()): Promis
 }
 
 /** entries with a captured location, for the map overview page. */
-export async function listEntriesWithLocation(): Promise<MaterializedEntry[]> {
+export async function listEntriesWithLocation(diaryId?: string): Promise<MaterializedEntry[]> {
 	const db = getDb();
+	const diaryCond = diaryId ? ` and diary_id = ?` : ``;
+	const diaryParams = diaryId ? [diaryId] : [];
 	return db.select<MaterializedEntry>({
 		sql: `select * from entries
-			where deleted = 0 and location_lat is not null and location_lng is not null
-			order by entry_date desc, updated_at desc`
+			where deleted = 0 and location_lat is not null and location_lng is not null${diaryCond}
+			order by entry_date desc, updated_at desc`,
+		params: diaryParams
 	});
 }
 
-export async function listTags(): Promise<{ tag: string; count: number }[]> {
+export async function listTags(diaryId?: string): Promise<{ tag: string; count: number }[]> {
 	const db = getDb();
+	const diaryCond = diaryId ? ` and e.diary_id = ?` : ``;
+	const diaryParams = diaryId ? [diaryId] : [];
 	return db.select<{ tag: string; count: number }>({
 		sql: `select t.tag as tag, count(*) as count from entry_tags t
 			join entries e on e.id = t.entry_id
-			where e.deleted = 0
+			where e.deleted = 0${diaryCond}
 			group by t.tag
-			order by t.tag asc`
+			order by t.tag asc`,
+		params: diaryParams
 	});
+}
+
+/** non-deleted entry counts per diary id, for the settings management ui. */
+export async function countEntriesByDiary(): Promise<Record<string, number>> {
+	const db = getDb();
+	const rows = await db.select<{ diary_id: string; count: number }>({
+		sql: `select diary_id, count(*) as count from entries where deleted = 0 group by diary_id`
+	});
+	return Object.fromEntries(rows.map((row) => [row.diary_id, row.count]));
 }
 
 export interface PhotoEntry {

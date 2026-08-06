@@ -24,8 +24,12 @@ Milestone 10 (packaging as an Android APK via Capacitor) is also done —
 native geolocation and native backup export are confirmed working
 on-device; the offline map's Capacitor range-request workaround has passed
 build/lint/test but not yet been confirmed rendering correctly on a real
-device (see `BUGS.md` bug 3). See [`PLAN.md`](./PLAN.md) for the full
-milestone list and architecture.
+device (see `BUGS.md` bug 3).
+
+Milestone 11 (multiple diaries) is done — entries can be grouped into named,
+syncing diaries, scoped from a nav switcher, with a settings section to
+manage them. See [`PLAN.md`](./PLAN.md) for the full milestone list and
+architecture.
 
 ## Prerequisites
 

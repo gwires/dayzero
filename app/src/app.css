@@ -34,12 +34,22 @@ nav a:hover {
 	opacity: 1;
 }
 
+.diary-select {
+	margin-left: auto;
+	max-width: 10rem;
+}
+
 .error {
 	color: light-dark(#b00020, #ff6b6b);
 }
 
 .filter-banner {
 	opacity: 0.8;
+}
+
+.diary-badge {
+	font-size: 0.75rem;
+	opacity: 0.7;
 }
 
 .day-group {
