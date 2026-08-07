@@ -1,7 +1,6 @@
 <script lang="ts">
-	import { marked } from 'marked';
-	import DOMPurify from 'dompurify';
 	import { Capacitor } from '@capacitor/core';
+	import MarkdownPreview from './MarkdownPreview.svelte';
 	import PhotoStrip from './PhotoStrip.svelte';
 	import MapView from './MapView.svelte';
 	import ConfirmDialog from './ConfirmDialog.svelte';
@@ -87,10 +86,6 @@
 			mapTileUrl = url;
 		});
 	});
-
-	const previewHtml = $derived(
-		preview ? DOMPurify.sanitize(marked.parse(markdown, { async: false })) : ''
-	);
 
 	function addTag(raw: string) {
 		const tag = raw.trim().toLowerCase();
@@ -249,8 +244,7 @@
 	</div>
 
 	{#if preview}
-		<!-- eslint-disable-next-line svelte/no-at-html-tags -- previewHtml is DOMPurify-sanitized above -->
-		<div class="markdown-preview">{@html previewHtml}</div>
+		<MarkdownPreview {markdown} class="markdown-preview" />
 	{:else}
 		<textarea
 			class="markdown-input"

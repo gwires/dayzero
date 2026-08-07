@@ -6,6 +6,7 @@
 		groupEntriesByMonth,
 		listEntries,
 		listOnThisDay,
+		type EntryListItem,
 		type MaterializedEntry
 	} from '$lib/entries/store';
 	import { NO_DATE, dayNumber, monthLabel, weekdayLabel } from '$lib/entries/dates';
@@ -13,8 +14,14 @@
 	import { ALL_DIARIES, DEFAULT_DIARY_ID } from '$lib/diaries/ids';
 	import { listDiaries } from '$lib/diaries/ydoc';
 	import { loadDiariesDoc } from '$lib/diaries/store';
+	import EntryThumb from '$lib/ui/EntryThumb.svelte';
+	import MarkdownPreview from '$lib/ui/MarkdownPreview.svelte';
 
-	let entries = $state<MaterializedEntry[]>([]);
+	// more than the three clamped lines can show, so the clamp does the
+	// truncating and the cut never lands mid-syntax.
+	const PREVIEW_CHARS = 500;
+
+	let entries = $state<EntryListItem[]>([]);
 	let onThisDay = $state<MaterializedEntry[]>([]);
 	let streak = $state(0);
 	let loading = $state(true);
@@ -118,14 +125,27 @@
 						<div class="day-entries">
 							{#each dayEntries as entry (entry.id)}
 								<a class="entry-card" href={resolve('/entry/[id]', { id: entry.id })}>
-									<p class="entry-preview">
-										{entry.markdown.trim().slice(0, 140) || '(empty entry)'}
-									</p>
-									{#if !filteredByDiary && entry.diary_id !== DEFAULT_DIARY_ID}
-										<span class="diary-badge">
-											{diaryNames.get(entry.diary_id) ?? 'unknown diary'}
-										</span>
-									{/if}
+									<div class="entry-main">
+										<div class="entry-text">
+											{#if entry.markdown.trim()}
+												<MarkdownPreview
+													markdown={entry.markdown}
+													limit={PREVIEW_CHARS}
+													class="entry-markdown"
+												/>
+											{:else}
+												<p class="entry-preview">(empty entry)</p>
+											{/if}
+											{#if !filteredByDiary && entry.diary_id !== DEFAULT_DIARY_ID}
+												<span class="diary-badge">
+													{diaryNames.get(entry.diary_id) ?? 'unknown diary'}
+												</span>
+											{/if}
+										</div>
+										{#if entry.photo_hash}
+											<EntryThumb hash={entry.photo_hash} />
+										{/if}
+									</div>
 								</a>
 							{/each}
 						</div>

@@ -201,32 +201,43 @@ export async function deleteEntry(id: string, doc: Y.Doc): Promise<void> {
 	});
 }
 
+export interface EntryListItem extends MaterializedEntry {
+	/** null when the entry has no photos at all. */
+	photo_hash: string | null;
+}
+
+// `listPhotos` orders a doc's photos by hash, so the lowest hash here is the
+// same photo the entry page leads with.
+const FIRST_PHOTO = `(select p.hash from entry_photos p where p.entry_id = e.id
+	order by p.hash limit 1) as photo_hash`;
+
 export async function listEntries(
 	opts: { tag?: string; date?: string; diaryId?: string } = {}
-): Promise<MaterializedEntry[]> {
+): Promise<EntryListItem[]> {
 	const db = getDb();
-	const diaryCond = opts.diaryId ? ` and diary_id = ?` : ``;
+	const diaryCond = opts.diaryId ? ` and e.diary_id = ?` : ``;
 	const diaryParams = opts.diaryId ? [opts.diaryId] : [];
 	if (opts.date) {
-		return db.select<MaterializedEntry>({
-			sql: `select * from entries
-				where deleted = 0 and entry_date = ?${diaryCond}
-				order by updated_at desc`,
+		return db.select<EntryListItem>({
+			sql: `select e.*, ${FIRST_PHOTO} from entries e
+				where e.deleted = 0 and e.entry_date = ?${diaryCond}
+				order by e.updated_at desc`,
 			params: [opts.date, ...diaryParams]
 		});
 	}
 	if (opts.tag) {
-		return db.select<MaterializedEntry>({
-			sql: `select e.* from entries e
+		return db.select<EntryListItem>({
+			sql: `select e.*, ${FIRST_PHOTO} from entries e
 				join entry_tags t on t.entry_id = e.id
-				where e.deleted = 0 and t.tag = ?${opts.diaryId ? ` and e.diary_id = ?` : ``}
+				where e.deleted = 0 and t.tag = ?${diaryCond}
 				order by e.entry_date desc, e.updated_at desc`,
 			params: [opts.tag, ...diaryParams]
 		});
 	}
-	return db.select<MaterializedEntry>({
-		sql: `select * from entries where deleted = 0${diaryCond}
-			order by entry_date desc, updated_at desc`,
+	return db.select<EntryListItem>({
+		sql: `select e.*, ${FIRST_PHOTO} from entries e
+			where e.deleted = 0${diaryCond}
+			order by e.entry_date desc, e.updated_at desc`,
 		params: diaryParams
 	});
 }
@@ -250,15 +261,15 @@ export async function searchEntries(query: string, diaryId?: string): Promise<Ma
 	});
 }
 
-export interface DayGroup {
+export interface DayGroup<T extends MaterializedEntry = MaterializedEntry> {
 	day: string;
-	entries: MaterializedEntry[];
+	entries: T[];
 }
 
 // entries arrive pre-sorted by entry_date desc, so same-day entries are
 // already adjacent — a single pass is enough to group them.
-export function groupEntriesByDay(list: MaterializedEntry[]): DayGroup[] {
-	const groups: DayGroup[] = [];
+export function groupEntriesByDay<T extends MaterializedEntry>(list: T[]): DayGroup<T>[] {
+	const groups: DayGroup<T>[] = [];
 	for (const entry of list) {
 		const day = entry.entry_date ?? NO_DATE;
 		const last = groups.at(-1);
@@ -268,16 +279,16 @@ export function groupEntriesByDay(list: MaterializedEntry[]): DayGroup[] {
 	return groups;
 }
 
-export interface MonthGroup {
+export interface MonthGroup<T extends MaterializedEntry = MaterializedEntry> {
 	/** 'YYYY-MM', or NO_DATE for entries whose doc carries no entry_date. */
 	month: string;
-	days: DayGroup[];
+	days: DayGroup<T>[];
 }
 
 // same single pass as `groupEntriesByDay`, one level deeper: the sort puts
 // every day of a month together, and every entry of a day together within it.
-export function groupEntriesByMonth(list: MaterializedEntry[]): MonthGroup[] {
-	const groups: MonthGroup[] = [];
+export function groupEntriesByMonth<T extends MaterializedEntry>(list: T[]): MonthGroup<T>[] {
+	const groups: MonthGroup<T>[] = [];
 	for (const entry of list) {
 		const day = entry.entry_date ?? NO_DATE;
 		const month = entry.entry_date ? entry.entry_date.slice(0, 7) : NO_DATE;
