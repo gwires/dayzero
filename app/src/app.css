@@ -72,10 +72,14 @@ nav a:hover {
 		font-size: 1.25rem;
 	}
 
-	/* sits beside the notebook icon at the head of the bar, not out at the
-	   right where its desktop text label lives. */
+	/* the three icons gather at the end of the bar, after the text links,
+	   in the same left-to-right order the labels have on desktop. */
 	.search-link {
-		order: -1;
+		order: 1;
+	}
+
+	nav a[href='/settings'] {
+		order: 3;
 	}
 
 	.fab {
@@ -104,7 +108,7 @@ nav a:hover {
 		align-items: center;
 		justify-content: center;
 		position: relative;
-		order: -1;
+		order: 2;
 		width: 2rem;
 		height: 2rem;
 	}

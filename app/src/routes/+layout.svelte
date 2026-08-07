@@ -60,11 +60,15 @@
 
 <div class="app">
 	<nav>
+		<a href={resolve('/search')} class="search-link" aria-label="search">
+			<span class="search-label">search</span>
+			<span class="search-icon" aria-hidden="true">🔍</span>
+		</a>
 		<a href={resolve('/')}>list</a>
 		<a href={resolve('/new')}>new</a>
 		<a href={resolve('/calendar')}>calendar</a>
-		<a href={resolve('/photos')}>photos</a>
 		<a href={resolve('/map')}>map</a>
+		<a href={resolve('/photos')}>photos</a>
 		<a href={resolve('/settings')} aria-label="settings">
 			<span class="settings-label">settings</span>
 			<span class="settings-icon" aria-hidden="true">⋮</span>
@@ -83,10 +87,6 @@
 				{/each}
 			</select>
 		</span>
-		<a href={resolve('/search')} class="search-link" aria-label="search">
-			<span class="search-label">search</span>
-			<span class="search-icon" aria-hidden="true">🔍</span>
-		</a>
 	</nav>
 	<main>
 		{@render children()}
