@@ -83,3 +83,5 @@
 		{@render children()}
 	</main>
 </div>
+
+<a href={resolve('/new')} class="fab" aria-label="new entry">+</a>

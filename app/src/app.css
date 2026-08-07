@@ -34,6 +34,37 @@ nav a:hover {
 	opacity: 1;
 }
 
+.fab {
+	display: none;
+}
+
+@media (max-width: 640px) {
+	nav a[href='/new'] {
+		display: none;
+	}
+
+	.fab {
+		position: fixed;
+		right: 1.25rem;
+		bottom: 1.25rem;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 3.5rem;
+		height: 3.5rem;
+		border-radius: 50%;
+		background: light-dark(#fff, #1a1a1a);
+		border: 1px solid light-dark(#ddd, #333);
+		box-shadow: 0 2px 8px rgb(0 0 0 / 0.25);
+		color: inherit;
+		text-decoration: none;
+		font-size: 1.75rem;
+		line-height: 1;
+		opacity: 1;
+		z-index: 500;
+	}
+}
+
 .diary-select {
 	margin-left: auto;
 	max-width: 10rem;
