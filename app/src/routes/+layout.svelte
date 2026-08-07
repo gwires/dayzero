@@ -77,6 +77,11 @@
 				{/each}
 			</select>
 		</span>
+		<a href={resolve('/')}>list</a>
+		<a href={resolve('/new')}>new</a>
+		<a href={resolve('/calendar')}>calendar</a>
+		<a href={resolve('/map')}>map</a>
+		<a href={resolve('/photos')}>photos</a>
 		<a href={resolve('/search')} class="search-link" aria-label="search">
 			<span class="search-label">search</span>
 			<svg class="nav-icon search-icon" viewBox="0 0 24 24" aria-hidden="true">
@@ -84,11 +89,6 @@
 				<path d="M15.4 15.4 20.5 20.5" />
 			</svg>
 		</a>
-		<a href={resolve('/')}>list</a>
-		<a href={resolve('/new')}>new</a>
-		<a href={resolve('/calendar')}>calendar</a>
-		<a href={resolve('/map')}>map</a>
-		<a href={resolve('/photos')}>photos</a>
 		<a href={resolve('/settings')} aria-label="settings">
 			<span class="settings-label">settings</span>
 			<svg class="nav-icon settings-icon" viewBox="0 0 24 24" aria-hidden="true">
