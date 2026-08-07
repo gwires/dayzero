@@ -3,11 +3,12 @@
 	import { resolve } from '$app/paths';
 	import {
 		getCurrentStreak,
-		groupEntriesByDay,
+		groupEntriesByMonth,
 		listEntries,
 		listOnThisDay,
 		type MaterializedEntry
 	} from '$lib/entries/store';
+	import { NO_DATE, dayNumber, monthLabel, weekdayLabel } from '$lib/entries/dates';
 	import { currentDiary, currentDiaryFilter } from '$lib/diaries/current.svelte';
 	import { ALL_DIARIES, DEFAULT_DIARY_ID } from '$lib/diaries/ids';
 	import { listDiaries } from '$lib/diaries/ydoc';
@@ -55,7 +56,7 @@
 		return entry.entry_date?.slice(0, 4) ?? '';
 	}
 
-	const grouped = $derived(groupEntriesByDay(entries));
+	const grouped = $derived(groupEntriesByMonth(entries));
 </script>
 
 <h1>list</h1>
@@ -105,16 +106,30 @@
 			<p>no entries yet. <a href={resolve('/new')}>write your first one</a>.</p>
 		{/if}
 	{:else}
-		{#each grouped as { day, entries: dayEntries } (day)}
-			<section class="day-group">
-				<h2>{day}</h2>
-				{#each dayEntries as entry (entry.id)}
-					<a class="entry-card" href={resolve('/entry/[id]', { id: entry.id })}>
-						<p class="entry-preview">{entry.markdown.trim().slice(0, 140) || '(empty entry)'}</p>
-						{#if !filteredByDiary && entry.diary_id !== DEFAULT_DIARY_ID}
-							<span class="diary-badge">{diaryNames.get(entry.diary_id) ?? 'unknown diary'}</span>
-						{/if}
-					</a>
+		{#each grouped as { month, days } (month)}
+			<section class="month-group">
+				<h2 class="month-heading">{monthLabel(month)}</h2>
+				{#each days as { day, entries: dayEntries } (day)}
+					<div class="day-row">
+						<time class="day-bubble" datetime={day === NO_DATE ? undefined : day}>
+							<span class="day-number">{dayNumber(day)}</span>
+							<span class="day-name">{weekdayLabel(day)}</span>
+						</time>
+						<div class="day-entries">
+							{#each dayEntries as entry (entry.id)}
+								<a class="entry-card" href={resolve('/entry/[id]', { id: entry.id })}>
+									<p class="entry-preview">
+										{entry.markdown.trim().slice(0, 140) || '(empty entry)'}
+									</p>
+									{#if !filteredByDiary && entry.diary_id !== DEFAULT_DIARY_ID}
+										<span class="diary-badge">
+											{diaryNames.get(entry.diary_id) ?? 'unknown diary'}
+										</span>
+									{/if}
+								</a>
+							{/each}
+						</div>
+					</div>
 				{/each}
 			</section>
 		{/each}

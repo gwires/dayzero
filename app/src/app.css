@@ -163,6 +163,77 @@ nav a:hover {
 	margin: 0 0 0.5rem;
 }
 
+/* the list view: a month heading over rows of `day bubble | that day's cards`. */
+.month-group {
+	margin-bottom: 2rem;
+}
+
+.month-heading {
+	font-size: 0.95rem;
+	font-weight: 600;
+	opacity: 0.7;
+	margin: 0 0 0.75rem;
+}
+
+.day-row {
+	display: flex;
+	align-items: flex-start;
+	gap: 0.75rem;
+	margin-bottom: 1rem;
+}
+
+.day-bubble {
+	flex: none;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	width: 3rem;
+	height: 3rem;
+	border: 1px solid light-dark(#ddd, #333);
+	border-radius: 50%;
+}
+
+.day-number {
+	font-size: 1.15rem;
+	font-weight: 600;
+	line-height: 1;
+}
+
+.day-name {
+	font-size: 0.65rem;
+	opacity: 0.6;
+	line-height: 1.4;
+}
+
+/* the cards keep the remaining width, and `min-width: 0` stops a long
+   unbroken word in a preview from stretching the row past the viewport. */
+.day-entries {
+	flex: 1;
+	min-width: 0;
+}
+
+.day-entries .entry-card:last-child {
+	margin-bottom: 0;
+}
+
+/* a second breakpoint block, down here so these win over the rules above —
+   the nav's block sits earlier in the file than the list view's defaults. */
+@media (max-width: 640px) {
+	.day-row {
+		gap: 0.6rem;
+	}
+
+	.day-bubble {
+		width: 2.5rem;
+		height: 2.5rem;
+	}
+
+	.day-number {
+		font-size: 1rem;
+	}
+}
+
 .entry-card {
 	display: block;
 	color: inherit;

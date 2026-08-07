@@ -4,6 +4,7 @@ import { getDb } from '$lib/db/client';
 import { notifyLocalWrite } from '$lib/sync/notify';
 import { DEFAULT_DIARY_ID } from '$lib/diaries/ids';
 import { getMeta, getPhotos, getTags, getText } from './ydoc';
+import { NO_DATE } from './dates';
 import { materialize, type MaterializedEntry } from './materialize';
 import { encodePhoto } from './photos';
 import { likePattern } from './search';
@@ -259,10 +260,35 @@ export interface DayGroup {
 export function groupEntriesByDay(list: MaterializedEntry[]): DayGroup[] {
 	const groups: DayGroup[] = [];
 	for (const entry of list) {
-		const day = entry.entry_date ?? 'no date';
+		const day = entry.entry_date ?? NO_DATE;
 		const last = groups.at(-1);
 		if (last?.day === day) last.entries.push(entry);
 		else groups.push({ day, entries: [entry] });
+	}
+	return groups;
+}
+
+export interface MonthGroup {
+	/** 'YYYY-MM', or NO_DATE for entries whose doc carries no entry_date. */
+	month: string;
+	days: DayGroup[];
+}
+
+// same single pass as `groupEntriesByDay`, one level deeper: the sort puts
+// every day of a month together, and every entry of a day together within it.
+export function groupEntriesByMonth(list: MaterializedEntry[]): MonthGroup[] {
+	const groups: MonthGroup[] = [];
+	for (const entry of list) {
+		const day = entry.entry_date ?? NO_DATE;
+		const month = entry.entry_date ? entry.entry_date.slice(0, 7) : NO_DATE;
+		const lastMonth = groups.at(-1);
+		if (lastMonth?.month !== month) {
+			groups.push({ month, days: [{ day, entries: [entry] }] });
+			continue;
+		}
+		const lastDay = lastMonth.days.at(-1);
+		if (lastDay?.day === day) lastDay.entries.push(entry);
+		else lastMonth.days.push({ day, entries: [entry] });
 	}
 	return groups;
 }
