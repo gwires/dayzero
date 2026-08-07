@@ -67,17 +67,20 @@
 		<a href={resolve('/map')}>map</a>
 		<a href={resolve('/photos')}>photos</a>
 		<a href={resolve('/settings')}>settings</a>
-		<select
-			class="diary-select"
-			aria-label="diary"
-			value={currentDiary.id}
-			onchange={(e) => selectDiary(e.currentTarget.value)}
-		>
-			<option value={ALL_DIARIES}>all diaries</option>
-			{#each diaries as diary (diary.id)}
-				<option value={diary.id}>{diary.name}</option>
-			{/each}
-		</select>
+		<span class="diary-switcher">
+			<span class="diary-icon" aria-hidden="true">📓</span>
+			<select
+				class="diary-select"
+				aria-label="diary"
+				value={currentDiary.id}
+				onchange={(e) => selectDiary(e.currentTarget.value)}
+			>
+				<option value={ALL_DIARIES}>all diaries</option>
+				{#each diaries as diary (diary.id)}
+					<option value={diary.id}>{diary.name}</option>
+				{/each}
+			</select>
+		</span>
 	</nav>
 	<main>
 		{@render children()}
