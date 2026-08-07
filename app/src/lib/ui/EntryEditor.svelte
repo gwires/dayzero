@@ -4,6 +4,7 @@
 	import { Capacitor } from '@capacitor/core';
 	import PhotoStrip from './PhotoStrip.svelte';
 	import MapView from './MapView.svelte';
+	import ConfirmDialog from './ConfirmDialog.svelte';
 	import type { PhotoEntry } from '$lib/entries/store';
 	import { getMapTileUrl } from '$lib/settings/store';
 	import { DEFAULT_DIARY_ID, type Diary } from '$lib/diaries/ids';
@@ -79,6 +80,7 @@
 	let locating = $state(false);
 	let locationError = $state<string | undefined>();
 	let mapTileUrl = $state<string | undefined>();
+	let confirmDeleteOpen = $state(false);
 
 	$effect(() => {
 		getMapTileUrl().then((url) => {
@@ -313,7 +315,22 @@
 			{saving ? 'saving…' : saveLabel}
 		</button>
 		{#if onDelete}
-			<button type="button" class="danger" onclick={onDelete} disabled={saving}>delete</button>
+			<button
+				type="button"
+				class="danger"
+				onclick={() => (confirmDeleteOpen = true)}
+				disabled={saving}>delete</button
+			>
 		{/if}
 	</div>
 </div>
+
+<ConfirmDialog
+	open={confirmDeleteOpen}
+	message="delete this entry? this can't be undone."
+	onConfirm={() => {
+		confirmDeleteOpen = false;
+		onDelete?.();
+	}}
+	onCancel={() => (confirmDeleteOpen = false)}
+/>

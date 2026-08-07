@@ -15,6 +15,7 @@
 	import { currentDiary, selectDiary } from '$lib/diaries/current.svelte';
 	import { countEntriesByDiary } from '$lib/entries/store';
 	import { theme, setTheme, type Theme } from '$lib/settings/theme.svelte';
+	import ConfirmDialog from '$lib/ui/ConfirmDialog.svelte';
 	import type * as Y from 'yjs';
 
 	let mapTileUrl = $state('');
@@ -37,6 +38,11 @@
 	let diaryCounts = $state<Record<string, number>>({});
 	let newDiaryName = $state('');
 	let diaryError = $state('');
+	let confirmDeleteDiaryId = $state<string | undefined>();
+	const confirmDeleteDiaryName = $derived(
+		diaries.find((d) => d.id === confirmDeleteDiaryId)?.name ?? ''
+	);
+	let pendingImportFile = $state<File | undefined>();
 
 	async function reloadDiaries() {
 		diariesDoc = await loadDiariesDoc();
@@ -61,14 +67,19 @@
 		await reloadDiaries();
 	}
 
-	async function handleDeleteDiary(id: string) {
-		if (!diariesDoc) return;
+	function requestDeleteDiary(id: string) {
 		diaryError = '';
 		if ((diaryCounts[id] ?? 0) > 0) {
 			diaryError = 'this diary still has entries — move or delete them first.';
 			return;
 		}
-		if (!confirm('delete this diary?')) return;
+		confirmDeleteDiaryId = id;
+	}
+
+	async function confirmDeleteDiary() {
+		const id = confirmDeleteDiaryId;
+		confirmDeleteDiaryId = undefined;
+		if (!id || !diariesDoc) return;
 		await deleteDiary(diariesDoc, id);
 		if (currentDiary.id === id) await selectDiary(ALL_DIARIES);
 		await reloadDiaries();
@@ -105,15 +116,18 @@
 		}
 	}
 
-	async function handleImportChange(ev: Event) {
+	function handleImportChange(ev: Event) {
 		const input = ev.currentTarget as HTMLInputElement;
 		const file = input.files?.[0];
 		input.value = '';
 		if (!file) return;
-		const confirmed = confirm(
-			'importing replaces all data on this device with the contents of this backup file. anything created or changed on this device since its last sync will be lost. continue?'
-		);
-		if (!confirmed) return;
+		pendingImportFile = file;
+	}
+
+	async function confirmImport() {
+		const file = pendingImportFile;
+		pendingImportFile = undefined;
+		if (!file) return;
 		importing = true;
 		importError = '';
 		try {
@@ -239,7 +253,7 @@
 					type="button"
 					class="danger"
 					disabled={diary.id === DEFAULT_DIARY_ID}
-					onclick={() => handleDeleteDiary(diary.id)}
+					onclick={() => requestDeleteDiary(diary.id)}
 				>
 					delete
 				</button>
@@ -287,3 +301,19 @@
 		<p class="filter-banner">storage usage isn't available in this browser.</p>
 	{/if}
 </section>
+
+<ConfirmDialog
+	open={confirmDeleteDiaryId !== undefined}
+	message={`delete "${confirmDeleteDiaryName}"? this can't be undone.`}
+	onConfirm={confirmDeleteDiary}
+	onCancel={() => (confirmDeleteDiaryId = undefined)}
+/>
+
+<ConfirmDialog
+	open={pendingImportFile !== undefined}
+	title="replace all data on this device?"
+	message="importing replaces all data on this device with the contents of this backup file. anything created or changed on this device since its last sync will be lost."
+	confirmLabel="import"
+	onConfirm={confirmImport}
+	onCancel={() => (pendingImportFile = undefined)}
+/>

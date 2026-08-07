@@ -207,8 +207,46 @@ nav a:hover {
 	gap: 0.5rem;
 }
 
-.editor-actions .danger {
+.danger {
 	color: light-dark(#b00020, #ff6b6b);
+}
+
+.confirm-dialog-backdrop {
+	position: fixed;
+	inset: 0;
+	background: light-dark(rgb(0 0 0 / 0.3), rgb(0 0 0 / 0.6));
+	display: flex;
+	align-items: flex-start;
+	justify-content: center;
+	padding: 1rem;
+	z-index: 1000;
+}
+
+.confirm-dialog {
+	background: light-dark(#fff, #1a1a1a);
+	border: 1px solid light-dark(#ddd, #333);
+	border-radius: 0.5rem;
+	padding: 1rem;
+	max-width: 400px;
+	width: 100%;
+	box-shadow: 0 4px 16px rgb(0 0 0 / 0.2);
+}
+
+.confirm-dialog h2 {
+	margin: 0 0 0.5rem;
+	font-size: 1rem;
+}
+
+.confirm-dialog p {
+	margin: 0 0 1rem;
+	font-size: 0.9rem;
+	opacity: 0.85;
+}
+
+.confirm-dialog-actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 0.5rem;
 }
 
 .tag-list {
