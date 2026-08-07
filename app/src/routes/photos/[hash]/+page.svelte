@@ -39,20 +39,19 @@
 		nextHash?: string;
 	}
 
-	// prev/next only step within the same day's photos — moving across days
-	// would make "next" jump an unpredictable distance through the timeline.
+	// prev/next step through every photo in timeline order (flattening the
+	// day groups), so reaching the edge of one entry's photos moves into the
+	// adjacent entry instead of stopping there.
+	const allPhotos = $derived(groups.flatMap((group) => group.photos));
+
 	const current = $derived.by((): Position | undefined => {
-		for (const group of groups) {
-			const index = group.photos.findIndex((p) => p.hash === hash);
-			if (index !== -1) {
-				return {
-					photo: group.photos[index],
-					prevHash: group.photos[index - 1]?.hash,
-					nextHash: group.photos[index + 1]?.hash
-				};
-			}
-		}
-		return undefined;
+		const index = allPhotos.findIndex((p) => p.hash === hash);
+		if (index === -1) return undefined;
+		return {
+			photo: allPhotos[index],
+			prevHash: allPhotos[index - 1]?.hash,
+			nextHash: allPhotos[index + 1]?.hash
+		};
 	});
 
 	$effect(() => {
