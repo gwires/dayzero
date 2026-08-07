@@ -84,6 +84,32 @@
 		}
 	}
 
+	// swipe left -> next, swipe right -> prev. a minimum distance keeps a
+	// vertical scroll/tap from registering as an accidental navigation.
+	const SWIPE_THRESHOLD_PX = 50;
+	let touchStartX: number | undefined;
+	let touchStartY: number | undefined;
+
+	function handleTouchStart(event: TouchEvent) {
+		touchStartX = event.touches[0].clientX;
+		touchStartY = event.touches[0].clientY;
+	}
+
+	function handleTouchEnd(event: TouchEvent) {
+		if (touchStartX === undefined || touchStartY === undefined) return;
+		const touch = event.changedTouches[0];
+		const dx = touch.clientX - touchStartX;
+		const dy = touch.clientY - touchStartY;
+		touchStartX = undefined;
+		touchStartY = undefined;
+		if (Math.abs(dx) < SWIPE_THRESHOLD_PX || Math.abs(dx) < Math.abs(dy)) return;
+		if (dx < 0 && current?.nextHash) {
+			goto(resolve('/photos/[hash]', { hash: current.nextHash }));
+		} else if (dx > 0 && current?.prevHash) {
+			goto(resolve('/photos/[hash]', { hash: current.prevHash }));
+		}
+	}
+
 	onMount(() => {
 		const previousOverflow = document.body.style.overflow;
 		document.body.style.overflow = 'hidden';
@@ -99,7 +125,15 @@
 	});
 </script>
 
-<div class="photo-viewer-backdrop" role="dialog" aria-modal="true" aria-label="photo viewer">
+<div
+	class="photo-viewer-backdrop"
+	role="dialog"
+	aria-modal="true"
+	aria-label="photo viewer"
+	tabindex="-1"
+	ontouchstart={handleTouchStart}
+	ontouchend={handleTouchEnd}
+>
 	<a class="photo-viewer-close" href={resolve('/photos')} aria-label="close">×</a>
 
 	{#if loading}
