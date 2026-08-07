@@ -121,7 +121,7 @@ dayzero/
     src/lib/sync/     # api client, outbox, blob fetcher, sync engine
     src/lib/settings/ # backup export/import
     src/lib/ui/        # shared UI components (EntryEditor, MapView, ...)
-    src/routes/        # timeline, new/edit entry, tags, calendar, map, settings
+    src/routes/        # list, new/edit entry, search, tags, calendar, photos, map, settings
     android/           # Capacitor Android project (milestone 10)
   server/
     src/main.zig  src/config.zig  src/db.zig  src/api.zig

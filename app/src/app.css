@@ -51,7 +51,8 @@ nav a:hover {
 	max-width: 10rem;
 }
 
-.settings-icon {
+.settings-icon,
+.search-icon {
 	display: none;
 }
 
@@ -60,13 +61,21 @@ nav a:hover {
 		display: none;
 	}
 
-	.settings-label {
+	.settings-label,
+	.search-label {
 		display: none;
 	}
 
-	.settings-icon {
+	.settings-icon,
+	.search-icon {
 		display: inline;
 		font-size: 1.25rem;
+	}
+
+	/* sits beside the notebook icon at the head of the bar, not out at the
+	   right where its desktop text label lives. */
+	.search-link {
+		order: -1;
 	}
 
 	.fab {
@@ -326,6 +335,23 @@ nav a:hover {
 	display: flex;
 	justify-content: flex-end;
 	gap: 0.5rem;
+}
+
+.search-input {
+	width: 100%;
+	box-sizing: border-box;
+	font-family: inherit;
+	font-size: 1rem;
+	padding: 0.5rem;
+	border: 1px solid light-dark(#ddd, #333);
+	border-radius: 0.25rem;
+	background: inherit;
+	color: inherit;
+}
+
+.search-hint {
+	font-size: 0.85rem;
+	opacity: 0.7;
 }
 
 .tag-list {

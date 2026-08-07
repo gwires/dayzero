@@ -3,6 +3,7 @@
 	import { resolve } from '$app/paths';
 	import {
 		getCurrentStreak,
+		groupEntriesByDay,
 		listEntries,
 		listOnThisDay,
 		type MaterializedEntry
@@ -54,25 +55,7 @@
 		return entry.entry_date?.slice(0, 4) ?? '';
 	}
 
-	interface DayGroup {
-		day: string;
-		entries: MaterializedEntry[];
-	}
-
-	// entries arrive pre-sorted by entry_date desc, so same-day entries are
-	// already adjacent — a single pass is enough to group them.
-	function groupByDay(list: MaterializedEntry[]): DayGroup[] {
-		const groups: DayGroup[] = [];
-		for (const entry of list) {
-			const day = entry.entry_date ?? 'no date';
-			const last = groups.at(-1);
-			if (last?.day === day) last.entries.push(entry);
-			else groups.push({ day, entries: [entry] });
-		}
-		return groups;
-	}
-
-	const grouped = $derived(groupByDay(entries));
+	const grouped = $derived(groupEntriesByDay(entries));
 </script>
 
 <h1>list</h1>

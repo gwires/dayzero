@@ -6,6 +6,7 @@ import { DEFAULT_DIARY_ID } from '$lib/diaries/ids';
 import { getMeta, getPhotos, getTags, getText } from './ydoc';
 import { materialize, type MaterializedEntry } from './materialize';
 import { encodePhoto } from './photos';
+import { likePattern } from './search';
 import { computeStreak } from './streak';
 
 /** captures the single update produced by a doc mutation, for the outbox. */
@@ -227,6 +228,43 @@ export async function listEntries(
 			order by entry_date desc, updated_at desc`,
 		params: diaryParams
 	});
+}
+
+/**
+ * plain-text substring search over entry text, for the /search page. `like` is
+ * case-insensitive for ascii; a real fts index can replace this later without
+ * changing the call site.
+ */
+export async function searchEntries(query: string, diaryId?: string): Promise<MaterializedEntry[]> {
+	const trimmed = query.trim();
+	if (!trimmed) return [];
+	const db = getDb();
+	const diaryCond = diaryId ? ` and diary_id = ?` : ``;
+	const diaryParams = diaryId ? [diaryId] : [];
+	return db.select<MaterializedEntry>({
+		sql: `select * from entries
+			where deleted = 0 and markdown like ? escape '\\'${diaryCond}
+			order by entry_date desc, updated_at desc`,
+		params: [likePattern(trimmed), ...diaryParams]
+	});
+}
+
+export interface DayGroup {
+	day: string;
+	entries: MaterializedEntry[];
+}
+
+// entries arrive pre-sorted by entry_date desc, so same-day entries are
+// already adjacent — a single pass is enough to group them.
+export function groupEntriesByDay(list: MaterializedEntry[]): DayGroup[] {
+	const groups: DayGroup[] = [];
+	for (const entry of list) {
+		const day = entry.entry_date ?? 'no date';
+		const last = groups.at(-1);
+		if (last?.day === day) last.entries.push(entry);
+		else groups.push({ day, entries: [entry] });
+	}
+	return groups;
 }
 
 /**
