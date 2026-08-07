@@ -11,4 +11,8 @@ server/zig-out/
 *.sqlite-shm
 *.sqlite-wal
 
+# test data generation (tools/, see docs/sketch-gen-test.md)
+/test-data/
+tools/node_modules/
+
 .DS_Store

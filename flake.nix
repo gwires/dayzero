@@ -76,6 +76,7 @@
             pkgs.zig_0_14
             pkgs.zls_0_14
             pkgs.nodejs_22
+            pkgs.deno
             pkgs.sqlite
             pkgs.tippecanoe
             pkgs.pmtiles

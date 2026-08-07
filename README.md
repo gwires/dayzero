@@ -115,6 +115,7 @@ dayzero/
   APK-PLAN.md                      # Capacitor packaging plan (milestone 10)
   docs/protocol.md                 # sync wire protocol, kept in lockstep with client + server
   scripts/                         # build-basemap.sh, build-glyphs.sh (offline map assets)
+  tools/                           # deno: generate/import/verify realistic test data — see tools/README.md
   app/
     src/lib/db/       # sqlite-wasm worker, migrations, typed rpc
     src/lib/entries/  # Y.Doc wrapper, materializer, entry store
