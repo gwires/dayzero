@@ -51,9 +51,22 @@ nav a:hover {
 	max-width: 10rem;
 }
 
+.settings-icon {
+	display: none;
+}
+
 @media (max-width: 640px) {
 	nav a[href='/new'] {
 		display: none;
+	}
+
+	.settings-label {
+		display: none;
+	}
+
+	.settings-icon {
+		display: inline;
+		font-size: 1.25rem;
 	}
 
 	.fab {

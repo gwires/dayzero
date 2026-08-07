@@ -75,7 +75,7 @@
 	const grouped = $derived(groupByDay(entries));
 </script>
 
-<h1>timeline</h1>
+<h1>list</h1>
 
 {#if tag}
 	<p class="filter-banner">
