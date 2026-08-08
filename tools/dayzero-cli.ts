@@ -9,6 +9,7 @@ import { buildDiaryUpdate, buildEntryUpdate, type EntryFields } from './lib/yjs-
 interface Conn {
 	server: string;
 	token: string;
+	username: string;
 }
 
 function fail(message: string): never {
@@ -22,12 +23,17 @@ function requireFlag(flags: Record<string, unknown>, name: string): string {
 	return value as string;
 }
 
+// note: DAYZERO_AUTH_TOKEN post-multi-tenant is the server's own secret, not
+// a bearer token — pass the per-username token computed by
+// scripts/invite-user.sh (or run-test-server.sh's startup log) as --token.
 function getConn(flags: Record<string, unknown>): Conn {
 	const server = (flags.server as string | undefined) ?? Deno.env.get('DAYZERO_SERVER_URL');
 	const token = (flags.token as string | undefined) ?? Deno.env.get('DAYZERO_AUTH_TOKEN');
+	const username = (flags.username as string | undefined) ?? Deno.env.get('DAYZERO_USERNAME');
 	if (!server) fail('error: missing --server (or DAYZERO_SERVER_URL)');
 	if (!token) fail('error: missing --token (or DAYZERO_AUTH_TOKEN)');
-	return { server: server.replace(/\/$/, ''), token };
+	if (!username) fail('error: missing --username (or DAYZERO_USERNAME)');
+	return { server: server.replace(/\/$/, ''), token, username };
 }
 
 async function apiRequest(
@@ -52,7 +58,7 @@ async function postChanges(conn: Conn, entryId: string, update: Uint8Array): Pro
 	await apiRequest(
 		conn,
 		'POST',
-		'/api/changes',
+		`/api/${conn.username}/changes`,
 		JSON.stringify({ changes: [{ entry_id: entryId, update: encodeBase64(update) }] }),
 		'application/json',
 	);
@@ -82,7 +88,7 @@ async function cmdBlobPush(conn: Conn, file: string | undefined): Promise<void> 
 	if (!file) fail('error: usage: dayzero-cli blob push <file>');
 	const bytes = await Deno.readFile(file);
 	const hash = await sha256Hex(bytes);
-	await apiRequest(conn, 'PUT', `/api/blobs/${hash}`, bytes, 'application/octet-stream');
+	await apiRequest(conn, 'PUT', `/api/${conn.username}/blobs/${hash}`, bytes, 'application/octet-stream');
 	console.log(JSON.stringify({ hash, bytes: bytes.length }));
 }
 
@@ -156,6 +162,7 @@ async function main(): Promise<void> {
 		string: [
 			'server',
 			'token',
+			'username',
 			'id',
 			'name',
 			'date',
@@ -182,7 +189,7 @@ async function main(): Promise<void> {
 	} else {
 		fail(
 			'usage: dayzero-cli <health | diary create | blob push <file> | entry create> ' +
-				'[--server <url>] [--token <t>] ...',
+				'[--server <url>] [--token <t>] [--username <u>] ...',
 		);
 	}
 }

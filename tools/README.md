@@ -12,7 +12,9 @@ the devshell.
 dataset — by default ~4000 entries, a 2500-day streak, 7 diaries, ~40 tags,
 ~100 locations, and ~3000 procedurally generated JPEGs — to `test-data/` at
 the repo root, plus a `manifest.json` describing what was written. It knows
-nothing about the server; it only ever reads/writes local files.
+nothing about the server; it only ever reads/writes local files. Pass
+`--small` for a ~170-entry dataset that generates and imports in seconds
+instead of minutes (see "fast iteration with `--small`" below).
 
 **`dayzero-cli.ts`** performs single-item operations against a running
 dayzero-server: `health`, `diary create`, `blob push <file>`, and
@@ -30,18 +32,40 @@ re-materializes every entry with yjs, and compares the result against
 
 ## quickstart
 
+The server is multi-tenant (see `../docs/PLAN.md` "multi-tenant server"):
+every request except `/api/health` is scoped under a `<username>` path
+segment and authenticated with a token derived from that username, not the
+server's own secret. `run-test-server.sh` picks a fixed username
+(`testgen`) and prints its derived token on startup — copy both into the
+commands below.
+
 ```sh
-nix develop -c tools/run-test-server.sh          # starts a server on :18200, prints the token
+nix develop -c tools/run-test-server.sh          # starts a server on :18200, prints username + token
 cd tools
 deno task generate                                # writes ../test-data/ (~5-8 minutes, mostly JPEG encoding)
-deno task import  -- --server http://127.0.0.1:18200 --token testgen-token
-deno task verify   -- --server http://127.0.0.1:18200 --token testgen-token
+deno task import  -- --server http://127.0.0.1:18200 --username testgen --token <printed-token>
+deno task verify   -- --server http://127.0.0.1:18200 --username testgen --token <printed-token>
 ```
 
 Use `deno task import -- --limit 20 ...` while iterating — a full import is
 ~7000 `dayzero-cli` subprocess spawns (one per diary/blob/entry) and takes
 roughly 7-25 minutes depending on the machine. `--limit` imports only the
 first N day-folders (ascending by date).
+
+## fast iteration with `--small`
+
+For iterating on the generate/import/verify pipeline itself (not for
+exercising large-diary UI performance), `deno task generate -- --small`
+writes a much smaller dataset — a 60-day streak plus a 200-day pre-streak
+history instead of 2500/1500 — landing around 170 entries and 170 photos.
+The whole generate → import → verify cycle finishes in well under a
+minute:
+
+```sh
+deno task generate -- --small
+deno task import  -- --username testgen --token <printed-token>
+deno task verify   -- --username testgen --token <printed-token>
+```
 
 ## seed / determinism
 
@@ -66,20 +90,27 @@ counts, etc.), the entries keep the same ids and clientIDs but now carry
 different content. Re-importing them into a server that already has the
 old versions does **not** update anything — same clientID + clock range
 with different content is exactly what yjs treats as "already seen" and
-skips. Always start the server against a fresh `DAYZERO_DB_PATH` after
-regenerating:
+skips. Always start the server against a fresh `DAYZERO_DB_PATH` directory
+after regenerating:
 
 ```sh
-nix develop -c tools/run-test-server.sh /path/to/a-new-db.sqlite
+nix develop -c tools/run-test-server.sh /path/to/a-new-db-dir
 ```
 
 ## other flags
 
-- `generate-test-data.ts --out <dir> --seed <n> --entries <n> --streak <n> --images <n>`
+- `generate-test-data.ts --out <dir> --seed <n> --entries <n> --streak <n> --images <n> --pre-streak-days <n>`
   — targets, not exact counts; the generator self-checks that actual totals
   land within ±10% and that the computed streak matches exactly, and
   aborts loudly otherwise. Refuses to overwrite a non-empty `--out` unless
   it contains a `manifest.json` from a prior run (then wipes and
-  regenerates).
-- `import-test-data.ts` / `verify-import.ts --data <dir> --server <url> --token <t>`
-  — `--server`/`--token` fall back to `DAYZERO_SERVER_URL`/`DAYZERO_AUTH_TOKEN`.
+  regenerates). `--small` sets all four to a fast small-dataset preset (see
+  above); any of the four flags passed explicitly overrides the preset for
+  just that value.
+- `dayzero-cli.ts` / `import-test-data.ts` / `verify-import.ts --server <url> --username <u> --token <t>`
+  (`import-test-data.ts`/`verify-import.ts` also take `--data <dir>`) —
+  `--server`/`--username`/`--token` fall back to
+  `DAYZERO_SERVER_URL`/`DAYZERO_USERNAME`/`DAYZERO_AUTH_TOKEN`. `--token` is
+  the *per-username* token (`scripts/invite-user.sh <username>`, or
+  `run-test-server.sh`'s startup log for its fixed `testgen` user) — never
+  the server's own `DAYZERO_AUTH_TOKEN` secret.

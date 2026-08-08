@@ -14,6 +14,7 @@ const defaultDataDir = new URL('test-data', repoRootUrl).pathname;
 interface Conn {
 	server: string;
 	token: string;
+	username: string;
 }
 
 interface Manifest {
@@ -42,6 +43,8 @@ async function runCli(args: string[], conn: Conn): Promise<string> {
 			conn.server,
 			'--token',
 			conn.token,
+			'--username',
+			conn.username,
 		],
 		stdout: 'piped',
 		stderr: 'piped',
@@ -229,13 +232,15 @@ async function processDayFolder(
 }
 
 async function main(): Promise<void> {
-	const flags = parseArgs(Deno.args, { string: ['data', 'server', 'token', 'limit'] });
+	const flags = parseArgs(Deno.args, { string: ['data', 'server', 'token', 'username', 'limit'] });
 	const dataDir = flags.data ?? defaultDataDir;
 	const server = flags.server ?? Deno.env.get('DAYZERO_SERVER_URL');
 	const token = flags.token ?? Deno.env.get('DAYZERO_AUTH_TOKEN');
+	const username = flags.username ?? Deno.env.get('DAYZERO_USERNAME');
 	if (!server) fail('missing --server (or DAYZERO_SERVER_URL)');
 	if (!token) fail('missing --token (or DAYZERO_AUTH_TOKEN)');
-	const conn: Conn = { server, token };
+	if (!username) fail('missing --username (or DAYZERO_USERNAME)');
+	const conn: Conn = { server, token, username };
 	const limit = flags.limit ? Number(flags.limit) : undefined;
 
 	console.log('==> health check');

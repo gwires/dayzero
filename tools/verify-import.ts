@@ -14,6 +14,7 @@ const defaultDataDir = new URL('test-data', repoRootUrl).pathname;
 interface Conn {
 	server: string;
 	token: string;
+	username: string;
 }
 
 interface Manifest {
@@ -48,10 +49,12 @@ async function pullAllChanges(conn: Conn): Promise<ChangeRow[]> {
 	let since = 0;
 	const limit = 2000;
 	for (;;) {
-		const res = await fetch(`${conn.server}/api/changes?since=${since}&limit=${limit}`, {
+		const res = await fetch(`${conn.server}/api/${conn.username}/changes?since=${since}&limit=${limit}`, {
 			headers: { Authorization: `Bearer ${conn.token}` },
 		});
-		if (res.status !== 200) fail(`GET /api/changes failed: ${res.status} ${await res.text()}`);
+		if (res.status !== 200) {
+			fail(`GET /api/${conn.username}/changes failed: ${res.status} ${await res.text()}`);
+		}
 		const { changes, cursor } = (await res.json()) as { changes: ChangeRow[]; cursor: number };
 		all.push(...changes);
 		since = cursor;
@@ -79,13 +82,15 @@ function compareRecord(
 }
 
 async function main(): Promise<void> {
-	const flags = parseArgs(Deno.args, { string: ['data', 'server', 'token'] });
+	const flags = parseArgs(Deno.args, { string: ['data', 'server', 'token', 'username'] });
 	const dataDir = flags.data ?? defaultDataDir;
 	const server = flags.server ?? Deno.env.get('DAYZERO_SERVER_URL');
 	const token = flags.token ?? Deno.env.get('DAYZERO_AUTH_TOKEN');
+	const username = flags.username ?? Deno.env.get('DAYZERO_USERNAME');
 	if (!server) fail('missing --server (or DAYZERO_SERVER_URL)');
 	if (!token) fail('missing --token (or DAYZERO_AUTH_TOKEN)');
-	const conn: Conn = { server, token };
+	if (!username) fail('missing --username (or DAYZERO_USERNAME)');
+	const conn: Conn = { server, token, username };
 
 	const manifest = JSON.parse(await Deno.readTextFile(`${dataDir}/manifest.json`)) as Manifest;
 
@@ -174,7 +179,7 @@ async function main(): Promise<void> {
 	let blobFailures = 0;
 	for (const idx of sampledIdx) {
 		const hash = hashArray[idx];
-		const res = await fetch(`${conn.server}/api/blobs/${hash}`, {
+		const res = await fetch(`${conn.server}/api/${conn.username}/blobs/${hash}`, {
 			headers: { Authorization: `Bearer ${conn.token}` },
 		});
 		const body = await res.arrayBuffer();

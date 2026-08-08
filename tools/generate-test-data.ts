@@ -24,7 +24,22 @@ import {
 	TRIPS,
 } from './lib/vocab.ts';
 
-const PRE_STREAK_DAYS = 1500;
+interface SizePreset {
+	entries: number;
+	streak: number;
+	images: number;
+	preStreakDays: number;
+}
+
+// full-size default: ~4000 entries / 2500-day streak / ~3000 images over an
+// 11-year span — see TESTGEN-PLAN.md "calendar plan". Generation takes
+// ~5-8 minutes and import ~7-25 minutes (tools/README.md).
+const DEFAULT_PRESET: SizePreset = { entries: 4000, streak: 2500, images: 3000, preStreakDays: 1500 };
+// `--small`: same shape (streak + trip-dotted pre-streak history) at
+// roughly 1/30th the scale, so generate+import+verify finishes in well
+// under a minute — for iterating on the pipeline itself, not for
+// exercising large-diary UI performance.
+const SMALL_PRESET: SizePreset = { entries: 170, streak: 60, images: 170, preStreakDays: 200 };
 
 const repoRootUrl = new URL('..', import.meta.url);
 const defaultOutDir = new URL('test-data', repoRootUrl).pathname;
@@ -234,15 +249,16 @@ function planDay(
 	dayIndex: number,
 	dateIso: string,
 	trip: PlacedTrip | undefined,
+	preStreakDays: number,
 ): DayPlan | undefined {
 	const isTripDay = trip !== undefined;
 	const isWeekend = isWeekendIso(dateIso);
-	const isStreakDay = dayIndex >= PRE_STREAK_DAYS;
+	const isStreakDay = dayIndex >= preStreakDays;
 	// the day right before the streak starts must never get content, or the
 	// generated streak would run longer than the target — see TESTGEN-PLAN.md
 	// "assert ... that the streak computed from the generated days ... is
 	// exactly the --streak value".
-	const isForcedEmptyBoundaryDay = dayIndex === PRE_STREAK_DAYS - 1;
+	const isForcedEmptyBoundaryDay = dayIndex === preStreakDays - 1;
 
 	let entryCount = 0;
 	let orphanCount = 0;
@@ -362,20 +378,25 @@ async function ensureOutDir(outDir: string): Promise<void> {
 // ---------------------------------------------------------------------------
 
 async function main(): Promise<void> {
-	const flags = parseArgs(Deno.args, { string: ['out', 'seed', 'entries', 'streak', 'images'] });
+	const flags = parseArgs(Deno.args, {
+		string: ['out', 'seed', 'entries', 'streak', 'images', 'pre-streak-days'],
+		boolean: ['small'],
+	});
+	const preset = flags.small ? SMALL_PRESET : DEFAULT_PRESET;
 	const outDir = flags.out ?? defaultOutDir;
 	const seed = Number(flags.seed ?? 42);
-	const entriesTarget = Number(flags.entries ?? 4000);
-	const streakTarget = Number(flags.streak ?? 2500);
-	const imagesTarget = Number(flags.images ?? 3000);
+	const entriesTarget = Number(flags.entries ?? preset.entries);
+	const streakTarget = Number(flags.streak ?? preset.streak);
+	const imagesTarget = Number(flags.images ?? preset.images);
+	const preStreakDays = Number(flags['pre-streak-days'] ?? preset.preStreakDays);
 
 	await ensureOutDir(outDir);
 
 	const rng = mulberry32(seed);
 	const generatedOnIso = new Date().toISOString().slice(0, 10);
 	const streakStartIso = addDaysIso(generatedOnIso, -(streakTarget - 1));
-	const spanStartIso = addDaysIso(streakStartIso, -PRE_STREAK_DAYS);
-	const totalDays = PRE_STREAK_DAYS + streakTarget;
+	const spanStartIso = addDaysIso(streakStartIso, -preStreakDays);
+	const totalDays = preStreakDays + streakTarget;
 
 	console.log(
 		`seed=${seed} generatedOn=${generatedOnIso} streakStart=${streakStartIso} totalDays=${totalDays}`,
@@ -396,7 +417,7 @@ async function main(): Promise<void> {
 
 	for (let dayIndex = 0; dayIndex < totalDays; dayIndex++) {
 		const dateIso = addDaysIso(spanStartIso, dayIndex);
-		const day = planDay(rng, dayIndex, dateIso, dayTripMap[dayIndex]);
+		const day = planDay(rng, dayIndex, dateIso, dayTripMap[dayIndex], preStreakDays);
 		if (!day) continue;
 		daysWithContent++;
 
