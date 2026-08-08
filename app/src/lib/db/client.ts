@@ -71,6 +71,12 @@ export class DbClient {
 		const res = await this.send({ kind: 'importDb', bytes }, [bytes.buffer]);
 		if (!res.ok) throw new Error(res.error);
 	}
+
+	/** deletes all local data — entries, tags, photos, diaries, settings. */
+	async clearAllData(): Promise<void> {
+		const res = await this.send({ kind: 'clearAllData' });
+		if (!res.ok) throw new Error(res.error);
+	}
 }
 
 let instance: DbClient | undefined;

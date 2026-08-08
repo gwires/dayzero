@@ -11,7 +11,8 @@ export type DbRequest =
 	| { id: number; kind: 'execBatch'; stmts: Statement[] }
 	| { id: number; kind: 'select'; stmt: Statement }
 	| { id: number; kind: 'exportDb' }
-	| { id: number; kind: 'importDb'; bytes: Uint8Array };
+	| { id: number; kind: 'importDb'; bytes: Uint8Array }
+	| { id: number; kind: 'clearAllData' };
 
 // plain `Omit<DbRequest, 'id'>` collapses the union to its common properties;
 // a distributive omit (naked type param in the `extends` clause) keeps each

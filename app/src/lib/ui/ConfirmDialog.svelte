@@ -1,4 +1,9 @@
 <script lang="ts">
+	interface ConfirmInput {
+		label: string;
+		expected: string;
+	}
+
 	interface Props {
 		open: boolean;
 		title?: string;
@@ -6,6 +11,7 @@
 		confirmLabel?: string;
 		cancelLabel?: string;
 		danger?: boolean;
+		confirmInput?: ConfirmInput;
 		onConfirm: () => void | Promise<void>;
 		onCancel: () => void;
 	}
@@ -17,9 +23,19 @@
 		confirmLabel = 'delete',
 		cancelLabel = 'cancel',
 		danger = true,
+		confirmInput,
 		onConfirm,
 		onCancel
 	}: Props = $props();
+
+	let inputValue = $state('');
+	const canConfirm = $derived(
+		!confirmInput || inputValue.trim() === confirmInput.expected
+	);
+
+	$effect(() => {
+		if (!open) inputValue = '';
+	});
 </script>
 
 <svelte:window
@@ -38,9 +54,27 @@
 		>
 			<h2 id="confirm-dialog-title">{title}</h2>
 			<p>{message}</p>
+			{#if confirmInput}
+				<div class="confirm-dialog-input">
+					<label>{confirmInput.label}</label>
+					<input
+						type="text"
+						bind:value={inputValue}
+						autofocus
+						autocomplete="off"
+					/>
+				</div>
+			{/if}
 			<div class="confirm-dialog-actions">
 				<button type="button" onclick={onCancel}>{cancelLabel}</button>
-				<button type="button" class:danger onclick={onConfirm}>{confirmLabel}</button>
+				<button
+					type="button"
+					class:danger
+					disabled={!canConfirm}
+					onclick={() => canConfirm && onConfirm()}
+				>
+					{confirmLabel}
+				</button>
 			</div>
 		</div>
 	</div>

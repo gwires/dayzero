@@ -15,6 +15,7 @@
 	import { ensureSessionKeyRestored, getSessionKey, setSessionKey } from '$lib/e2ee/session';
 	import { unlockOrCreateE2ee } from '$lib/e2ee/store';
 	import { exportBackup, importBackup } from '$lib/settings/backup';
+	import { getDb } from '$lib/db/client';
 	import { loadDiariesDoc, createDiary, renameDiary, deleteDiary } from '$lib/diaries/store';
 	import { listDiaries } from '$lib/diaries/ydoc';
 	import { DEFAULT_DIARY_ID, ALL_DIARIES, type Diary } from '$lib/diaries/ids';
@@ -54,6 +55,10 @@
 		diaries.find((d) => d.id === confirmDeleteDiaryId)?.name ?? ''
 	);
 	let pendingImportFile = $state<File | undefined>();
+	let confirmClearAll = $state(false);
+	const clearAllExpectedValue = $derived(
+		syncUsername.trim() || 'DELETE ALL'
+	);
 
 	async function reloadDiaries() {
 		diariesDoc = await loadDiariesDoc();
@@ -205,6 +210,12 @@
 			syncStatus = 'ok';
 			setTimeout(() => (syncStatus = 'idle'), 2000);
 		}
+	}
+
+	async function confirmClearAllData() {
+		confirmClearAll = false;
+		await getDb().clearAllData();
+		location.reload();
 	}
 </script>
 
@@ -373,6 +384,17 @@
 	{/if}
 </section>
 
+<section class="field danger-zone">
+	<h2>danger zone</h2>
+	<p class="filter-banner">
+		this deletes every entry, tag, photo, diary, and setting from this device. it does not affect
+		the sync server or other devices.
+	</p>
+	<button type="button" class="danger" onclick={() => (confirmClearAll = true)}>
+		clear all data
+	</button>
+</section>
+
 <ConfirmDialog
 	open={confirmDeleteDiaryId !== undefined}
 	message={`delete "${confirmDeleteDiaryName}"? this can't be undone.`}
@@ -387,4 +409,17 @@
 	confirmLabel="import"
 	onConfirm={confirmImport}
 	onCancel={() => (pendingImportFile = undefined)}
+/>
+
+<ConfirmDialog
+	open={confirmClearAll}
+	title="delete everything on this device?"
+	message="this deletes all entries, tags, photos, diaries, and settings from this browser. this can't be undone."
+	confirmLabel="clear all data"
+	confirmInput={{
+		label: `type ${syncUsername.trim() ? `"${syncUsername}"` : '"DELETE ALL"'} to confirm`,
+		expected: clearAllExpectedValue
+	}}
+	onConfirm={confirmClearAllData}
+	onCancel={() => (confirmClearAll = false)}
 />

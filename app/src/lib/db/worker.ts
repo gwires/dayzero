@@ -71,6 +71,13 @@ async function handle(req: DbRequest): Promise<DbResponse> {
 				applyMigrations(db);
 				return { id: req.id, ok: true, rows: [] };
 			}
+			case 'clearAllData': {
+				db.close();
+				pool.unlink(DB_FILENAME);
+				db = new pool.OpfsSAHPoolDb(DB_FILENAME);
+				applyMigrations(db);
+				return { id: req.id, ok: true, rows: [] };
+			}
 		}
 	} catch (err) {
 		return { id: req.id, ok: false, error: err instanceof Error ? err.message : String(err) };
