@@ -161,7 +161,7 @@ a dumb, durable relay.
 - sync engine runs pull-then-push on app start, on the `online` event, and debounced after local writes
 - deletion = `meta.deleted = true` tombstone inside the doc, so it propagates like any edit
 - compaction (later, optional): a client may post a merged snapshot update and the server can drop that entry's older updates once all known devices' cursors have passed them. not needed for v1 — diary entries are small and the log is cheap
-- v1 auth: single user, one long random bearer token in the server config. TLS is left to a reverse proxy (caddy/nginx). end-to-end encryption of everything that crosses this boundary is implemented — see "encryption" below
+- auth: multi-tenant, stateless per-user tokens derived from one server secret (`DAYZERO_AUTH_TOKEN`) — see "multi-tenant server" below and `docs/protocol.md` "auth" for the full formula. TLS is left to a reverse proxy (caddy/nginx). end-to-end encryption of everything that crosses this boundary is implemented — see "encryption" below
 - client implementation (`app/src/lib/sync/`): `api.ts` (fetch wrapper matching `docs/protocol.md`, base64 (de)coding), `outbox.ts` (read/delete queued updates by rowid), `blobs.ts` (push un-pushed attachments, fetch attachments newly referenced by pulled docs), `engine.ts` (`syncOnce()` = pull-then-push; `initSyncEngine()` wires start/`online`/debounced-after-write). `entries/store.ts` gained `applyRemoteUpdate` (applies a pulled update and re-materializes *without* re-queuing it to the outbox) and a `sync/notify.ts` pub/sub so a local write can trigger a debounced sync without `entries/store.ts` importing the sync engine (avoiding a circular import)
 - the sync server needs CORS (`Access-Control-Allow-Origin`, handling the browser's `OPTIONS` preflight) since it's a separate origin from the PWA — httpz ships a `middleware.Cors` for exactly this, registered once as a server-wide middleware in `main.zig`
 
@@ -234,12 +234,48 @@ quirks).
   losing device's already-cached key then fails and surfaces as a normal
   sync error until the user re-enters the winning passphrase.
 
+## multi-tenant server
+
+Each user is identified by a username and gets their own sqlite database
+file — a small group of people can share one self-hosted server without
+seeing each other's data, and without the server maintaining any accounts
+table at all.
+
+- **routing**: every endpoint except `GET /api/health` is scoped under a
+  `<username>` path segment (`/api/<username>/changes`,
+  `/api/<username>/blobs/<id>`). httpz's router natively supports two path
+  params in one route pattern.
+- **auth**: `user_token = hex(HMAC-SHA256(key = DAYZERO_AUTH_TOKEN, message
+  = username))` — fully stateless, no per-user secret stored server-side
+  (`server/src/api.zig`'s `deriveUserToken`). The raw `DAYZERO_AUTH_TOKEN`
+  is never itself accepted as a bearer token post-change, even by the
+  admin's own device — see `docs/protocol.md` "auth" for the exact formula
+  and a known-answer test vector. No revocation mechanism for a single user
+  short of rotating `DAYZERO_AUTH_TOKEN` for everyone.
+- **storage**: `DAYZERO_DB_PATH` is a directory, not a file —
+  `<dir>/<username>.sqlite`, opened lazily on first request for that
+  username and cached for the process's lifetime
+  (`server/src/tenants.zig`'s `TenantStore`). The directory is created
+  fail-fast at startup if it doesn't exist. Per-tenant isolation is
+  structural (separate files), so `_diaries`/`_e2ee_meta`/entry/blob id
+  collisions between different users are impossible by construction.
+- **username validation**: `[a-z0-9_-]{1,32}`, checked identically
+  server-side and by `scripts/invite-user.sh` (no silent normalization —
+  the HMAC message must be one unambiguous canonical byte string on both
+  sides). `health` is reserved: httpz's router matches a literal child
+  (`/api/health`) before trying the `:username` param sibling, with no
+  backtracking, so a real user named "health" would 404 on every route of
+  their own.
+- **inviting a user**: `DAYZERO_AUTH_TOKEN=... scripts/invite-user.sh
+  <username>` computes and prints that user's token for the admin to hand
+  out — nothing is written anywhere.
+
 ## server (`server/`)
 
 - zig (version pinned by the nix flake, e.g. 0.14.x), dependencies via `build.zig.zon`:
   - `http.zig` (karlseguin) for the http server — much nicer than raw `std.http`
   - `zqlite` for sqlite
-- single sqlite database file, path from config; WAL mode
+- one sqlite database file per username, in a directory from config; WAL mode; opened lazily (see "multi-tenant server")
 
 ```sql
 updates(seq INTEGER PRIMARY KEY AUTOINCREMENT, entry_id TEXT, update BLOB, received_at TEXT)
@@ -249,9 +285,9 @@ blobs(id TEXT PRIMARY KEY, bytes BLOB)   -- id is client-chosen and opaque, not 
 - endpoints: the sync api above + `GET /api/health` — see `docs/protocol.md` for the full wire contract
 - config: env vars (port, address, db path, auth token). `DAYZERO_AUTH_TOKEN` is required — the server refuses to start without one, since there's no safe "open" default for a sync endpoint
 - also serves the built PWA as static files (optional but convenient: one binary = whole app)
-- `zig build test` for unit tests (handlers are tested directly via `httpz.testing`, no real socket); `server/test-integration.sh` starts a real instance and exercises the protocol over HTTP with curl (push, pull, blob round-trip, auth rejection). `server/test-e2e-sync.sh` builds on that: starts a real instance and runs the client's vitest sync harness against it, simulating two devices (as plain `Y.Doc`s, not full client sqlite databases — that needs a browser) to assert convergence after concurrent edits
+- `zig build test` for unit tests (handlers are tested directly via `httpz.testing`, no real socket); `server/test-integration.sh` starts a real instance and exercises the protocol over HTTP with curl (push, pull, blob round-trip, auth rejection, cross-tenant isolation). `server/test-e2e-sync.sh` builds on that: starts a real instance and runs the client's vitest sync harness against it, simulating two devices (as plain `Y.Doc`s, not full client sqlite databases — that needs a browser) to assert convergence after concurrent edits
 - needs CORS (see "sync") since the PWA calls it cross-origin — httpz's `middleware.Cors`, registered server-wide in `main.zig`'s `server.router(...)` call
-- gotcha: `zig build test`'s root module (`main.zig`) only discovers `test` blocks in files it actually analyzes — merely `@import`ing and calling into `config.zig`/`db.zig`/`api.zig` from `main()` isn't enough, since `main()` itself never runs during a test build. `main.zig` has a `test { std.testing.refAllDecls(@This()); }` block to force those files (and their tests) to be analyzed; without it `zig build test` silently reports success having run zero tests
+- gotcha: `zig build test`'s root module (`main.zig`) only discovers `test` blocks in files it actually analyzes — merely `@import`ing and calling into `config.zig`/`db.zig`/`api.zig`/`tenants.zig` from `main()` isn't enough, since `main()` itself never runs during a test build. `main.zig` has a `test { std.testing.refAllDecls(@This()); }` block to force those files (and their tests) to be analyzed; without it `zig build test` silently reports success having run zero tests
 
 ## repo layout
 
@@ -268,11 +304,11 @@ dayzero/
     static/basemap.pmtiles  # bundled offline vector basemap, see "map" above
   server/
     build.zig  build.zig.zon
-    src/main.zig  src/config.zig  src/db.zig  src/api.zig
+    src/main.zig  src/config.zig  src/db.zig  src/api.zig  src/tenants.zig
     test-integration.sh   # curl-based protocol test against a real running instance
     test-e2e-sync.sh      # real server + client vitest sync harness, two simulated devices
   scripts/
-    build-basemap.sh  README.md   # rebuilds app/static/basemap.pmtiles
+    build-basemap.sh  invite-user.sh  README.md   # rebuilds app/static/basemap.pmtiles; computes a user's sync token
   docs/protocol.md   # the sync protocol, kept in lockstep with both implementations
 ```
 
@@ -290,13 +326,14 @@ dayzero/
 10. **android apk**: wraps the static build in Capacitor (`app/capacitor.config.ts`, `app/android/`, see `APK-PLAN.md`) so it installs and runs from a bundled `https://localhost` WebView origin — a secure context, which OPFS (the sqlite storage layer) requires — rather than a hosted/TWA origin; Android SDK + JDK 21 added to the nix devshell (`flake.nix`); native geolocation via `@capacitor/geolocation` (the plain web API gets no permission prompt inside a plain WebView); native backup export via `@capacitor/filesystem` (a Blob + `<a download>` silently no-ops in a WebView); debug APK builds successfully (`./gradlew assembleDebug`) — on-device confirmation of the full app (OPFS-backed pages, native location, native backup export) is the remaining step, see `BUGS.md`
 11. **multiple diaries**: entries can belong to a named diary (`meta.diary_id`, absent = virtual default "journal"); the diary registry is a well-known `_diaries` Y.Doc synced through the existing log (no server changes); a nav diary switcher scopes timeline/on-this-day/streak/calendar/tags/map (device-local selection, not synced); the entry editor's diary select doubles as "move entry"; `/settings` gets a diaries section to create/rename/delete (delete requires the diary to be empty first)
 12. **end-to-end encryption**: `app/src/lib/e2ee/` (ids, ydoc, crypto, store, session) — PBKDF2/AES-256-GCM via native `crypto.subtle`, a well-known `_e2ee_meta` bootstrap doc for cross-device salt/verifier distribution; `sync/engine.ts` requires a verified passphrase alongside the server url/token, encrypting every entry/`_diaries` update and photo blob once configured; `/settings` gets a passphrase field; `server/src/api.zig`'s blob upload hash verification was removed (see "encryption"); scope is deliberately sync-only — local storage is unaffected, see `SECURE-STORE-INVESTIGATION.md`
+13. **multi-tenant server**: `server/src/tenants.zig` (`TenantStore`, username validation) — one `DAYZERO_AUTH_TOKEN` server secret now mints per-user tokens via `hex(HMAC-SHA256(key=secret, message=username))` instead of being usable directly as a bearer token; `DAYZERO_DB_PATH` is now a directory holding one sqlite file per username, opened lazily; routes become `/api/<username>/changes` and `/api/<username>/blobs/<id>` (`/api/health` unchanged); `scripts/invite-user.sh` computes a new user's token for an admin to hand out; no revocation short of rotating the server secret; no data migration — existing single-tenant `dayzero.sqlite` deployments start fresh under the new default directory (`dayzero-data`)
 
 ## verification
 
 - `app`: vitest for the materializer — two Y.Docs diverge offline, exchange updates in both orders, assert identical text/tags/meta and identical materialized rows (`entries/materialize.test.ts`)
 - `app`: vitest for the sync engine's wire layer — base64 round-tripping, request shapes, pagination, error handling, all against a mocked `fetch` (`sync/api.test.ts`); `entries/store.ts`'s db-backed pieces (`applyRemoteUpdate`, outbox, blobs) aren't unit tested the same way since they need a real sqlite-wasm/OPFS worker (a browser), not just node — covered by the browser smoke test below instead
 - `app`: vitest for the streak calculation — given a set of entry dates, assert the correct current-streak count, including gaps, an unbroken streak, and today vs. yesterday as the streak's anchor
-- `server`: `zig build test`; curl-based integration script (push updates, pull from zero cursor, blob round-trip, auth rejection)
+- `server`: `zig build test` (including `tenants.zig`'s username-validation/isolation tests and a known-answer HMAC vector); curl-based integration script (push updates, pull from zero cursor, blob round-trip, auth rejection, cross-tenant isolation, reserved/invalid-username rejection)
 - end-to-end: `server/test-e2e-sync.sh` starts a real server and runs the vitest sync harness (`sync/e2e.test.ts`, skipped unless `DAYZERO_E2E_SERVER_URL`/`DAYZERO_E2E_TOKEN` are set) against it — two `Y.Doc`s standing in for two devices push/pull through the real HTTP protocol and are asserted to converge after concurrent edits
 - manual: two isolated browser profiles (separate OPFS storage, same real server) exercising the actual UI end to end — create an entry on device A, sync, pull it up on device B, edit concurrently on both (text on A, a tag on B) without syncing, then sync in order and confirm both devices converge to the same markdown + tags
 - `app`: vitest for the E2EE primitives — KDF determinism, encrypt/decrypt round-tripping, verifier accept/reject, key-material export/import (`e2ee/crypto.test.ts`); the bootstrap doc's atomic-config convergence under a concurrent-setup race (`e2ee/ydoc.test.ts`); `sync/e2e.test.ts` extended with two simulated devices converging over ciphertext plus a wrong-passphrase negative case
@@ -304,7 +341,7 @@ dayzero/
 ## defaults chosen (flag if you disagree)
 
 - yjs for the CRDT (mature, tiny (~tens of KB), battle-tested, good codemirror binding for later) rather than automerge (heavier wasm) or loro (younger). server stays CRDT-agnostic either way
-- single-user server with one bearer token (no accounts) — it's self-hosted and personal
+- multi-tenant server, stateless per-user tokens (HMAC-derived from one server secret, no accounts table, no revocation short of rotating the secret) — still self-hosted, but for a small group rather than strictly one person
 - photos live inside sqlite as blobs (content-addressed) rather than as loose files — one-file backup, simpler sync
 - end-to-end encryption is scoped to the sync wire only (entries/`_diaries` updates + photo blobs) — local sqlite/OPFS storage is unaffected by design; see "encryption" and `SECURE-STORE-INVESTIGATION.md`
 - sveltekit static rather than bare vite+svelte — free routing and structure, still a pure static PWA

@@ -2,8 +2,8 @@ const std = @import("std");
 const httpz = @import("httpz");
 
 const config = @import("config.zig");
-const db = @import("db.zig");
 const api = @import("api.zig");
+const tenants_mod = @import("tenants.zig");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -22,12 +22,18 @@ pub fn main() !void {
     };
     defer cfg.deinit(allocator);
 
-    const db_path = try allocator.dupeZ(u8, cfg.db_path);
-    defer allocator.free(db_path);
-    const conn = try db.open(db_path);
-    defer conn.close();
+    std.fs.cwd().makePath(cfg.db_path) catch |err| {
+        std.log.err(
+            "failed to create/access DAYZERO_DB_PATH directory '{s}': {}",
+            .{ cfg.db_path, err },
+        );
+        return err;
+    };
 
-    var handler = api.Handler{ .db = conn, .auth_token = cfg.auth_token };
+    var tenants = tenants_mod.TenantStore.init(allocator, cfg.db_path);
+    defer tenants.deinit();
+
+    var handler = api.Handler{ .tenants = &tenants, .auth_token = cfg.auth_token };
 
     var server = try httpz.Server(*api.Handler).init(
         allocator,
@@ -51,7 +57,10 @@ pub fn main() !void {
     const router = try server.router(.{ .middlewares = &.{cors} });
     api.registerRoutes(router);
 
-    std.log.info("dayzero-server listening on http://{s}:{d} (db: {s})", .{ cfg.address, cfg.port, cfg.db_path });
+    std.log.info(
+        "dayzero-server listening on http://{s}:{d} (tenant db dir: {s})",
+        .{ cfg.address, cfg.port, cfg.db_path },
+    );
     try server.listen();
 }
 

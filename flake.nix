@@ -82,6 +82,7 @@
             pkgs.pmtiles
             pkgs.unzip
             pkgs.dejavu_fonts
+            pkgs.openssl
             androidSdk
             pkgs.jdk21
           ];

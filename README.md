@@ -95,8 +95,14 @@ Configuration is via environment variables:
 | ---------------------- | ------------------ | --------------------------------- |
 | `DAYZERO_PORT`         | `8080`              | port to listen on                 |
 | `DAYZERO_ADDRESS`      | `127.0.0.1`         | address to bind                   |
-| `DAYZERO_DB_PATH`      | `dayzero.sqlite`    | path to the SQLite database file |
-| `DAYZERO_AUTH_TOKEN`   | *(required)*        | bearer token; server refuses to start without one |
+| `DAYZERO_DB_PATH`      | `dayzero-data`      | directory holding one SQLite file per username (`<dir>/<username>.sqlite`), created on startup |
+| `DAYZERO_AUTH_TOKEN`   | *(required)*        | server secret used to derive each user's bearer token — never itself sent as a bearer token, see `docs/protocol.md` "auth" and `scripts/invite-user.sh` |
+
+The server is multi-tenant: each user gets their own database, authenticated
+with a token derived from `DAYZERO_AUTH_TOKEN` and their username — run
+`DAYZERO_AUTH_TOKEN=... scripts/invite-user.sh <username>` to compute a new
+user's token to hand out. See `docs/protocol.md` "auth" for the full
+derivation formula and `PLAN.md` "multi-tenant server" for the design.
 
 The server compiles to a single, dependency-free static binary — SQLite is
 vendored and compiled in rather than linked against the system library.
@@ -114,7 +120,7 @@ dayzero/
   BUGS.md                          # known mobile/APK bugs and their status
   APK-PLAN.md                      # Capacitor packaging plan (milestone 10)
   docs/protocol.md                 # sync wire protocol, kept in lockstep with client + server
-  scripts/                         # build-basemap.sh, build-glyphs.sh (offline map assets)
+  scripts/                         # build-basemap.sh, build-glyphs.sh (offline map assets), invite-user.sh (per-user sync token)
   tools/                           # deno: generate/import/verify realistic test data — see tools/README.md
   app/
     src/lib/db/       # sqlite-wasm worker, migrations, typed rpc
@@ -125,5 +131,5 @@ dayzero/
     src/routes/        # list, new/edit entry, search, tags, calendar, photos, map, settings
     android/           # Capacitor Android project (milestone 10)
   server/
-    src/main.zig  src/config.zig  src/db.zig  src/api.zig
+    src/main.zig  src/config.zig  src/db.zig  src/api.zig  src/tenants.zig
 ```

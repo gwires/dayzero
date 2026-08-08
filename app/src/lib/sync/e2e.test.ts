@@ -24,6 +24,7 @@ import { E2EE_META_DOC_ID } from '$lib/e2ee/ids';
 import { getE2eeConfig, setE2eeConfig } from '$lib/e2ee/ydoc';
 
 const serverUrl = process.env.DAYZERO_E2E_SERVER_URL;
+const username = process.env.DAYZERO_E2E_USERNAME;
 const token = process.env.DAYZERO_E2E_TOKEN;
 
 /** a minimal stand-in for entries/store.ts's pull loop, scoped to one entry_id for test isolation. */
@@ -36,8 +37,12 @@ async function pullAllFor(
 	return { changes: changes.filter((c) => c.entryId === entryId), cursor };
 }
 
-describe.skipIf(!serverUrl || !token)('sync e2e against a real server', () => {
-	const cfg: SyncConfig = { serverUrl: serverUrl ?? '', token: token ?? '' };
+describe.skipIf(!serverUrl || !username || !token)('sync e2e against a real server', () => {
+	const cfg: SyncConfig = {
+		serverUrl: serverUrl ?? '',
+		username: username ?? '',
+		token: token ?? ''
+	};
 
 	it('two devices converge after concurrent offline edits', async () => {
 		const entryId = `e2e-${Date.now()}-${Math.random().toString(36).slice(2)}`;

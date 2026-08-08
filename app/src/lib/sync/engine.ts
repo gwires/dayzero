@@ -8,7 +8,13 @@ import { decryptBytes, encryptBytes } from '$lib/e2ee/crypto';
 import { ensureSessionKeyRestored, getSessionKey } from '$lib/e2ee/session';
 import { applyRemoteE2eeMetaUpdate } from '$lib/e2ee/store';
 import { E2EE_META_DOC_ID } from '$lib/e2ee/ids';
-import { getSyncCursor, getSyncServerUrl, getSyncToken, setSyncCursor } from '$lib/settings/store';
+import {
+	getSyncCursor,
+	getSyncServerUrl,
+	getSyncToken,
+	getSyncUsername,
+	setSyncCursor
+} from '$lib/settings/store';
 import type { SyncConfig } from './api';
 import { pullChanges, pushChanges } from './api';
 import { fetchMissingBlobs, pushPendingBlobs } from './blobs';
@@ -19,15 +25,20 @@ const PULL_PAGE_SIZE = 500;
 const OUTBOX_BATCH_SIZE = 500;
 const DEBOUNCE_MS = 2000;
 
-/** returns undefined (sync is a no-op, not an error) unless a server and a
- * token are configured — same gate as before encryption existed. A missing
- * passphrase does *not* block this: a fresh device must still be able to
- * reach the server to pull the always-plaintext `_e2ee_meta` bootstrap doc
- * before it has any key at all (see pull() below). */
+/** returns undefined (sync is a no-op, not an error) unless a server, a
+ * username, and a token are all configured — same gate as before encryption
+ * existed, just with the multi-tenant username added. A missing passphrase
+ * does *not* block this: a fresh device must still be able to reach the
+ * server to pull the always-plaintext `_e2ee_meta` bootstrap doc before it
+ * has any key at all (see pull() below). */
 async function getConfig(): Promise<SyncConfig | undefined> {
-	const [serverUrl, token] = await Promise.all([getSyncServerUrl(), getSyncToken()]);
-	if (!serverUrl || !token) return undefined;
-	return { serverUrl, token };
+	const [serverUrl, username, token] = await Promise.all([
+		getSyncServerUrl(),
+		getSyncUsername(),
+		getSyncToken()
+	]);
+	if (!serverUrl || !username || !token) return undefined;
+	return { serverUrl, username, token };
 }
 
 /**

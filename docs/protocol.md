@@ -15,6 +15,12 @@ PLAN.md "encryption"). The server needs no knowledge of either — any opaque
 id is already accepted, and both travel through push/pull exactly like an
 entry's updates.
 
+The server is multi-tenant (PLAN.md "multi-tenant server"): every route
+except `/api/health` is scoped under a `<username>` path segment, and each
+username gets a wholly separate sqlite database file. This means `_diaries`/
+`_e2ee_meta`/entry/blob id isolation between different users is structural
+(separate files) — not access-control filtering within a shared table.
+
 Once a client has set up encryption (PLAN.md "encryption"), the `update`
 bytes for every `entry_id` except `_e2ee_meta` are a client-side AES-GCM
 envelope, not a raw yjs update — the server doesn't need to know or care;
@@ -34,12 +40,38 @@ which CORS doesn't restrict the same way.
 Every endpoint except `GET /api/health` requires:
 
 ```
-Authorization: Bearer <token>
+Authorization: Bearer <user_token>
 ```
 
-`<token>` is the single long random string configured via `DAYZERO_AUTH_TOKEN`
-on the server. There is one token for the whole server (v1 is single-user);
-a missing or incorrect token gets `401 {"error": "unauthorized"}`. TLS is
+The server has one secret, `DAYZERO_AUTH_TOKEN`, but that raw value is
+**never** itself accepted as a bearer token — it's used purely as an HMAC
+key. Each user's actual token is:
+
+```
+user_token = hex(HMAC-SHA256(key = DAYZERO_AUTH_TOKEN, message = username))
+```
+
+computed with lowercase hex output, over the raw UTF-8 bytes of `username`
+with no trailing whitespace/newline. `username` must match `[a-z0-9_-]{1,32}`
+(validated identically server-side, in `server/src/tenants.zig`'s
+`validateUsername`, and by `scripts/invite-user.sh`) and is embedded in the
+URL path (`/api/<username>/...`) on every request. A worked known-answer
+vector, useful for confirming a reimplementation agrees:
+`HMAC-SHA256(key="secret", message="alice")` =
+`4360c67bc81025114044578d7c4e8e0f02fd0cae99f22d603390e8f9dc9888f8`.
+
+This is fully stateless: the server stores no per-user record anywhere, and
+there is no revocation mechanism for a single user — removing access means
+rotating `DAYZERO_AUTH_TOKEN`, which invalidates and requires redistributing
+every user's token. An admin's own device uses a username + derived token
+exactly like anyone else; the raw server secret never travels over HTTP. See
+`scripts/invite-user.sh` for how an admin computes a new user's token to
+hand out.
+
+A missing/malformed/wrong token gets `401 {"error": "unauthorized"}`. An
+invalid `username` (bad charset, too long, or the reserved word `health` —
+see `tenants.zig`'s `reserved_usernames` for why) gets
+`400 {"error": "invalid_username"}` before auth is even checked. TLS is
 expected to be handled by a reverse proxy in front of the server, not by the
 server itself.
 
@@ -51,7 +83,7 @@ No auth required. Used for liveness checks.
 200 {"status": "ok"}
 ```
 
-## `POST /api/changes`
+## `POST /api/<username>/changes`
 
 Pushes one or more yjs updates. Each is appended to the server's log and
 assigned a monotonically increasing `seq` (clients don't need to know their
@@ -80,7 +112,7 @@ Errors: `400 {"error": "invalid_json"}` (unparseable body), `400
 {"error": "missing_body"}` (empty body), `400 {"error":
 "invalid_update_encoding"}` (an `update` field isn't valid base64).
 
-## `GET /api/changes?since=<seq>&limit=<n>`
+## `GET /api/<username>/changes?since=<seq>&limit=<n>`
 
 Pulls all updates with `seq > since`, oldest first. `since=0` (or omitted)
 pulls from the beginning of the log. `limit` defaults to 500 and is capped
@@ -101,7 +133,7 @@ Response:
 `cursor` is the highest `seq` in this response (or `since` unchanged if
 `changes` is empty) — save it and pass it as the next `since`.
 
-## `PUT /api/blobs/<id>`
+## `PUT /api/<username>/blobs/<id>`
 
 Uploads an attachment blob (a photo, from the client's `attachments`
 table). `<id>` must be a 64-character lowercase hex string, but the server
@@ -121,7 +153,7 @@ Response: `200 {"status": "ok"}`.
 
 Errors: `400 {"error": "invalid_id"}` (path segment isn't 64 hex chars).
 
-## `GET /api/blobs/<id>`
+## `GET /api/<username>/blobs/<id>`
 
 Response: the raw bytes with `Content-Type: application/octet-stream`, or
 `404 {"error": "not_found"}` if no blob with that id has been uploaded.
@@ -155,8 +187,8 @@ writes (`sync/notify.ts`):
    attachment blobs not yet marked `pushed` are uploaded, encrypted
    (`sync/blobs.ts`'s `pushPendingBlobs`).
 
-No-ops quietly (not an error) if no server url/token is configured yet.
-Once one is, a passphrase is not optional: nothing but the `_e2ee_meta`
-bootstrap doc is ever sent or applied without a verified key — there is no
-plaintext fallback. `/settings` surfaces the `locked` state to the user as
-"enter your passphrase below to enable encrypted sync."
+No-ops quietly (not an error) if no server url/username/token is configured
+yet. Once one is, a passphrase is not optional: nothing but the
+`_e2ee_meta` bootstrap doc is ever sent or applied without a verified key —
+there is no plaintext fallback. `/settings` surfaces the `locked` state to
+the user as "enter your passphrase below to enable encrypted sync."

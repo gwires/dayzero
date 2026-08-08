@@ -79,3 +79,17 @@ request.
 
 Requires `node` and `dejavu_fonts` — provided by the nix devshell
 (`flake.nix`).
+
+## invite-user.sh
+
+Computes a new user's per-user bearer token for the sync server's
+multi-tenant auth (see `docs/protocol.md` "auth") — `hex(HMAC-SHA256(key =
+DAYZERO_AUTH_TOKEN, message = username))`. Stateless: nothing is written
+anywhere, and there's no revocation mechanism short of rotating
+`DAYZERO_AUTH_TOKEN` (which invalidates every existing user's token).
+
+```sh
+DAYZERO_AUTH_TOKEN=your-server-secret nix develop -c scripts/invite-user.sh alice
+```
+
+Requires `openssl` (provided by the nix devshell, `flake.nix`).

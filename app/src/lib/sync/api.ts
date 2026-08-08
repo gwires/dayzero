@@ -4,6 +4,7 @@
 
 export interface SyncConfig {
 	serverUrl: string;
+	username: string;
 	token: string;
 }
 
@@ -45,7 +46,7 @@ export function base64ToBytes(b64: string): Uint8Array {
 }
 
 function url(cfg: SyncConfig, path: string): string {
-	return `${cfg.serverUrl.replace(/\/+$/, '')}${path}`;
+	return `${cfg.serverUrl.replace(/\/+$/, '')}/api/${cfg.username}${path}`;
 }
 
 async function authedFetch(
@@ -65,7 +66,7 @@ async function authedFetch(
 
 export async function pushChanges(cfg: SyncConfig, changes: PushChange[]): Promise<void> {
 	if (changes.length === 0) return;
-	await authedFetch(cfg, '/api/changes', {
+	await authedFetch(cfg, '/changes', {
 		method: 'POST',
 		headers: { 'Content-Type': 'application/json' },
 		body: JSON.stringify({
@@ -82,7 +83,7 @@ export async function pullChanges(
 	since: number,
 	limit: number
 ): Promise<PullResult> {
-	const res = await authedFetch(cfg, `/api/changes?since=${since}&limit=${limit}`);
+	const res = await authedFetch(cfg, `/changes?since=${since}&limit=${limit}`);
 	const body = (await res.json()) as {
 		changes: { seq: number; entry_id: string; update: string }[];
 		cursor: number;
@@ -101,13 +102,13 @@ export async function putBlob(cfg: SyncConfig, hash: string, bytes: Uint8Array):
 	// copy into a fresh Uint8Array<ArrayBuffer>: `bytes` may be typed
 	// Uint8Array<ArrayBufferLike> (e.g. coming from sqlite-wasm), which
 	// current TS/DOM lib versions don't consider assignable to BlobPart.
-	await authedFetch(cfg, `/api/blobs/${hash}`, {
+	await authedFetch(cfg, `/blobs/${hash}`, {
 		method: 'PUT',
 		body: new Blob([new Uint8Array(bytes)])
 	});
 }
 
 export async function getBlob(cfg: SyncConfig, hash: string): Promise<Uint8Array> {
-	const res = await authedFetch(cfg, `/api/blobs/${hash}`);
+	const res = await authedFetch(cfg, `/blobs/${hash}`);
 	return new Uint8Array(await res.arrayBuffer());
 }

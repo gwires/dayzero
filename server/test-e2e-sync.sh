@@ -17,7 +17,9 @@ server_dir="$repo_root/server"
 app_dir="$repo_root/app"
 work="$(mktemp -d)"
 port=18100
-token="e2e-token-$$"
+server_token="e2e-token-$$"
+username="e2euser"
+user_token=$(printf '%s' "$username" | openssl dgst -sha256 -hmac "$server_token" | awk '{print $NF}')
 
 cleanup() {
 	if [ -n "${server_pid:-}" ] && kill -0 "$server_pid" 2>/dev/null; then
@@ -32,8 +34,8 @@ echo "==> building server"
 (cd "$server_dir" && zig build)
 
 echo "==> starting server on 127.0.0.1:$port"
-DAYZERO_AUTH_TOKEN="$token" DAYZERO_PORT="$port" DAYZERO_ADDRESS=127.0.0.1 \
-	DAYZERO_DB_PATH="$work/test.sqlite" \
+DAYZERO_AUTH_TOKEN="$server_token" DAYZERO_PORT="$port" DAYZERO_ADDRESS=127.0.0.1 \
+	DAYZERO_DB_PATH="$work/tenant-dbs" \
 	"$server_dir/zig-out/bin/dayzero-server" >"$work/server.log" 2>&1 &
 server_pid=$!
 
@@ -46,6 +48,7 @@ echo "==> running vitest sync harness against it"
 (
 	cd "$app_dir"
 	DAYZERO_E2E_SERVER_URL="http://127.0.0.1:$port" \
-		DAYZERO_E2E_TOKEN="$token" \
+		DAYZERO_E2E_USERNAME="$username" \
+		DAYZERO_E2E_TOKEN="$user_token" \
 		npx vitest run src/lib/sync/e2e.test.ts
 )

@@ -19,8 +19,13 @@ pub const Config = struct {
             else => return err,
         };
 
+        // a directory containing one sqlite file per username
+        // (`<db_path>/<username>.sqlite`), created lazily on first use of
+        // each username — see server/src/tenants.zig. Not eagerly
+        // validated here; main.zig fails fast at startup if the directory
+        // can't be created/accessed.
         const db_path = std.process.getEnvVarOwned(allocator, "DAYZERO_DB_PATH") catch |err| switch (err) {
-            error.EnvironmentVariableNotFound => try allocator.dupe(u8, "dayzero.sqlite"),
+            error.EnvironmentVariableNotFound => try allocator.dupe(u8, "dayzero-data"),
             else => return err,
         };
 

@@ -3,10 +3,12 @@
 		getMapTileUrl,
 		getSyncServerUrl,
 		getSyncToken,
+		getSyncUsername,
 		setE2eeKeyMaterial,
 		setMapTileUrl,
 		setSyncServerUrl,
-		setSyncToken
+		setSyncToken,
+		setSyncUsername
 	} from '$lib/settings/store';
 	import { syncOnce } from '$lib/sync/engine';
 	import { exportKeyMaterial } from '$lib/e2ee/crypto';
@@ -26,6 +28,7 @@
 	let saved = $state(false);
 
 	let syncServerUrl = $state('');
+	let syncUsername = $state('');
 	let syncToken = $state('');
 	let syncSaved = $state(false);
 	let syncStatus = $state<'idle' | 'syncing' | 'ok' | 'error'>('idle');
@@ -97,10 +100,13 @@
 		getMapTileUrl().then((url) => {
 			mapTileUrl = url ?? '';
 		});
-		Promise.all([getSyncServerUrl(), getSyncToken()]).then(([url, token]) => {
-			syncServerUrl = url ?? '';
-			syncToken = token ?? '';
-		});
+		Promise.all([getSyncServerUrl(), getSyncUsername(), getSyncToken()]).then(
+			([url, username, token]) => {
+				syncServerUrl = url ?? '';
+				syncUsername = username ?? '';
+				syncToken = token ?? '';
+			}
+		);
 		ensureSessionKeyRestored().then(() => {
 			e2eeStatus = getSessionKey() ? 'unlocked' : 'unconfigured';
 		});
@@ -159,6 +165,7 @@
 	async function saveSyncSettings() {
 		await Promise.all([
 			setSyncServerUrl(syncServerUrl.trim() || undefined),
+			setSyncUsername(syncUsername.trim() || undefined),
 			setSyncToken(syncToken.trim() || undefined)
 		]);
 		syncSaved = true;
@@ -246,6 +253,14 @@
 		bind:value={syncServerUrl}
 		onblur={saveSyncSettings}
 	/>
+	<label for="sync-username">sync username</label>
+	<input
+		id="sync-username"
+		class="location-name"
+		placeholder="the username your server admin gave you"
+		bind:value={syncUsername}
+		onblur={saveSyncSettings}
+	/>
 	<label for="sync-token">sync token</label>
 	<input
 		id="sync-token"
@@ -256,8 +271,8 @@
 		onblur={saveSyncSettings}
 	/>
 	<p class="filter-banner">
-		leave empty to keep this device offline-only. see <code>DAYZERO_AUTH_TOKEN</code> in the server's
-		config for the token.
+		leave empty to keep this device offline-only. ask your server admin for a username and token —
+		see <code>scripts/invite-user.sh</code> in the server's repo.
 	</p>
 	{#if syncSaved}<p class="filter-banner">saved.</p>{/if}
 	<button type="button" onclick={syncNow} disabled={syncStatus === 'syncing'}>

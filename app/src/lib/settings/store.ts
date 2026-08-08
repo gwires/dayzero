@@ -38,16 +38,26 @@ export function setMapTileUrl(url: string | undefined): Promise<void> {
 }
 
 const SYNC_SERVER_URL_KEY = 'sync_server_url';
+const SYNC_USERNAME_KEY = 'sync_username';
 const SYNC_TOKEN_KEY = 'sync_token';
 const SYNC_CURSOR_KEY = 'sync_cursor';
 
-/** the sync server's base url (e.g. `https://diary.example.com`) and bearer token. see PLAN.md "sync". */
+/** the sync server's base url (e.g. `https://diary.example.com`), username, and bearer token. see PLAN.md "sync". */
 export function getSyncServerUrl(): Promise<string | undefined> {
 	return getSetting(SYNC_SERVER_URL_KEY);
 }
 
 export function setSyncServerUrl(url: string | undefined): Promise<void> {
 	return setSetting(SYNC_SERVER_URL_KEY, url);
+}
+
+/** the username the server admin assigned this device — see docs/protocol.md "auth". */
+export function getSyncUsername(): Promise<string | undefined> {
+	return getSetting(SYNC_USERNAME_KEY);
+}
+
+export function setSyncUsername(username: string | undefined): Promise<void> {
+	return setSetting(SYNC_USERNAME_KEY, username);
 }
 
 export function getSyncToken(): Promise<string | undefined> {

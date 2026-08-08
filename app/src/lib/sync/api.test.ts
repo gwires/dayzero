@@ -9,7 +9,11 @@ import {
 	type SyncConfig
 } from './api';
 
-const cfg: SyncConfig = { serverUrl: 'https://sync.example.com', token: 'secret-token' };
+const cfg: SyncConfig = {
+	serverUrl: 'https://sync.example.com',
+	username: 'alice',
+	token: 'secret-token'
+};
 
 afterEach(() => {
 	vi.unstubAllGlobals();
@@ -40,7 +44,7 @@ describe('pushChanges', () => {
 
 		expect(fetchMock).toHaveBeenCalledTimes(1);
 		const [url, init] = fetchMock.mock.calls[0];
-		expect(url).toBe('https://sync.example.com/api/changes');
+		expect(url).toBe('https://sync.example.com/api/alice/changes');
 		expect(init.method).toBe('POST');
 		expect(init.headers.Authorization).toBe('Bearer secret-token');
 		expect(JSON.parse(init.body)).toEqual({
@@ -78,7 +82,7 @@ describe('pullChanges', () => {
 		const result = await pullChanges(cfg, 2, 100);
 
 		expect(fetchMock.mock.calls[0][0]).toBe(
-			'https://sync.example.com/api/changes?since=2&limit=100'
+			'https://sync.example.com/api/alice/changes?since=2&limit=100'
 		);
 		expect(result.cursor).toBe(5);
 		expect(result.changes).toEqual([
@@ -88,14 +92,14 @@ describe('pullChanges', () => {
 });
 
 describe('putBlob / getBlob', () => {
-	it('PUTs raw bytes to /api/blobs/<hash>', async () => {
+	it('PUTs raw bytes to /api/<username>/blobs/<hash>', async () => {
 		const fetchMock = vi.fn().mockResolvedValue(new Response('{}', { status: 200 }));
 		vi.stubGlobal('fetch', fetchMock);
 
 		await putBlob(cfg, 'abc123', new Uint8Array([1, 2, 3]));
 
 		const [url, init] = fetchMock.mock.calls[0];
-		expect(url).toBe('https://sync.example.com/api/blobs/abc123');
+		expect(url).toBe('https://sync.example.com/api/alice/blobs/abc123');
 		expect(init.method).toBe('PUT');
 		expect(init.headers.Authorization).toBe('Bearer secret-token');
 	});
