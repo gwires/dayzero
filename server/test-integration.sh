@@ -105,17 +105,13 @@ hash=$(sha256sum "$work/blob.bin" | cut -d' ' -f1)
 
 status=$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H "Authorization: Bearer $token" \
 	--data-binary @"$work/blob.bin" "$base/api/blobs/$hash")
-expect_status "PUT /api/blobs/<sha256> with the correct hash" 200 "$status"
+expect_status "PUT /api/blobs/<sha256>" 200 "$status"
 
 resp=$(curl -s -w '\n%{http_code}' -H "Authorization: Bearer $token" "$base/api/blobs/$hash")
 status=$(echo "$resp" | tail -1)
 body=$(echo "$resp" | head -n -1)
 expect_status "GET /api/blobs/<sha256>" 200 "$status"
 expect_eq "fetched blob matches uploaded bytes" "hello blob content" "$body"
-
-status=$(curl -s -o /dev/null -w '%{http_code}' -X PUT -H "Authorization: Bearer $token" \
-	--data-binary @"$work/blob.bin" "$base/api/blobs/$(printf '0%.0s' {1..64})")
-expect_status "PUT /api/blobs/<sha256> with a mismatched hash" 400 "$status"
 
 status=$(curl -s -o /dev/null -w '%{http_code}' -H "Authorization: Bearer $token" \
 	"$base/api/blobs/$(printf '1%.0s' {1..64})")

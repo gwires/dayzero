@@ -3,11 +3,15 @@
 		getMapTileUrl,
 		getSyncServerUrl,
 		getSyncToken,
+		setE2eeKeyMaterial,
 		setMapTileUrl,
 		setSyncServerUrl,
 		setSyncToken
 	} from '$lib/settings/store';
 	import { syncOnce } from '$lib/sync/engine';
+	import { exportKeyMaterial } from '$lib/e2ee/crypto';
+	import { ensureSessionKeyRestored, getSessionKey, setSessionKey } from '$lib/e2ee/session';
+	import { unlockOrCreateE2ee } from '$lib/e2ee/store';
 	import { exportBackup, importBackup } from '$lib/settings/backup';
 	import { loadDiariesDoc, createDiary, renameDiary, deleteDiary } from '$lib/diaries/store';
 	import { listDiaries } from '$lib/diaries/ydoc';
@@ -26,6 +30,10 @@
 	let syncSaved = $state(false);
 	let syncStatus = $state<'idle' | 'syncing' | 'ok' | 'error'>('idle');
 	let syncError = $state('');
+
+	let passphrase = $state('');
+	let e2eeStatus = $state<'unconfigured' | 'checking' | 'unlocked' | 'error'>('unconfigured');
+	let e2eeError = $state('');
 
 	let exporting = $state(false);
 	let exportedPath = $state('');
@@ -93,6 +101,9 @@
 			syncServerUrl = url ?? '';
 			syncToken = token ?? '';
 		});
+		ensureSessionKeyRestored().then(() => {
+			e2eeStatus = getSessionKey() ? 'unlocked' : 'unconfigured';
+		});
 		navigator.storage?.estimate().then((estimate) => {
 			if (estimate.usage != null && estimate.quota != null) {
 				storageUsage = { usageBytes: estimate.usage, quotaBytes: estimate.quota };
@@ -154,6 +165,24 @@
 		setTimeout(() => (syncSaved = false), 1500);
 	}
 
+	async function handlePassphraseBlur() {
+		const trimmed = passphrase.trim();
+		passphrase = '';
+		if (!trimmed) return;
+		e2eeStatus = 'checking';
+		e2eeError = '';
+		const result = await unlockOrCreateE2ee(trimmed);
+		if (!result.ok) {
+			e2eeStatus = 'error';
+			e2eeError = 'incorrect passphrase.';
+			return;
+		}
+		setSessionKey(result.key);
+		await setE2eeKeyMaterial(await exportKeyMaterial(result.key));
+		e2eeStatus = 'unlocked';
+		void syncNow(); // pick up anything that was queued/blocked while locked, immediately
+	}
+
 	async function syncNow() {
 		syncStatus = 'syncing';
 		const result = await syncOnce();
@@ -162,6 +191,9 @@
 		} else if (result.error) {
 			syncStatus = 'error';
 			syncError = result.error;
+		} else if (result.locked) {
+			syncStatus = 'error';
+			syncError = 'enter your passphrase below to enable encrypted sync.';
 		} else {
 			syncStatus = 'ok';
 			setTimeout(() => (syncStatus = 'idle'), 2000);
@@ -233,6 +265,30 @@
 	</button>
 	{#if syncStatus === 'ok'}<span class="filter-banner">synced.</span>{/if}
 	{#if syncStatus === 'error'}<p class="error">sync failed: {syncError}</p>{/if}
+</section>
+
+<section class="field">
+	<h2>encryption</h2>
+	<label for="e2ee-passphrase">passphrase</label>
+	<input
+		id="e2ee-passphrase"
+		class="location-name"
+		type="password"
+		placeholder="passphrase (required for sync)"
+		bind:value={passphrase}
+		onblur={handlePassphraseBlur}
+	/>
+	<p class="filter-banner">
+		required to sync — without it, nothing is sent to or received from the server. if you don't sync
+		at all, you don't need this. entries, the diary list, and photos are all encrypted before they
+		ever leave this device; the server never sees plaintext. local storage on this device is
+		unaffected. AES-256-GCM with a key derived from this passphrase (PBKDF2, 600,000 iterations).
+		there is no recovery if it's lost — use the same passphrase on every device; changing it later
+		isn't supported yet.
+	</p>
+	{#if e2eeStatus === 'checking'}<p class="filter-banner">checking…</p>{/if}
+	{#if e2eeStatus === 'unlocked'}<p class="filter-banner">unlocked on this device.</p>{/if}
+	{#if e2eeStatus === 'error'}<p class="error">{e2eeError}</p>{/if}
 </section>
 
 <section class="field">

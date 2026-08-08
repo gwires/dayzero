@@ -12,6 +12,16 @@
 import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 import { pullChanges, pushChanges, type PulledChange, type SyncConfig } from './api';
+import {
+	checkVerifier,
+	computeVerifier,
+	decryptBytes,
+	deriveKey,
+	encryptBytes,
+	generateSalt
+} from '$lib/e2ee/crypto';
+import { E2EE_META_DOC_ID } from '$lib/e2ee/ids';
+import { getE2eeConfig, setE2eeConfig } from '$lib/e2ee/ydoc';
 
 const serverUrl = process.env.DAYZERO_E2E_SERVER_URL;
 const token = process.env.DAYZERO_E2E_TOKEN;
@@ -90,5 +100,64 @@ describe.skipIf(!serverUrl || !token)('sync e2e against a real server', () => {
 		expect(deviceA.getText('text').toString()).toBe('hello world');
 		expect(deviceA.getMap('meta').toJSON()).toEqual(deviceB.getMap('meta').toJSON());
 		expect(deviceA.getMap('meta').get('location_name')).toBe('Amsterdam');
+	});
+
+	it('two devices with the same passphrase converge over ciphertext; a wrong passphrase cannot decrypt it', async () => {
+		const entryId = `e2e-e2ee-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+
+		// device A bootstraps encryption: generates a salt, derives a key from
+		// its own passphrase, and pushes the (always-plaintext) `_e2ee_meta`
+		// doc — the same mechanism entries/`_diaries` updates rely on to reach
+		// other devices, just never encrypted itself.
+		const metaDocA = new Y.Doc();
+		const salt = generateSalt();
+		const keyA = await deriveKey('correct horse battery staple', salt, 1000);
+		const verifier = await computeVerifier(keyA);
+		setE2eeConfig(metaDocA, { salt, iterations: 1000, verifier });
+		await pushChanges(cfg, [
+			{ entryId: E2EE_META_DOC_ID, update: Y.encodeStateAsUpdate(metaDocA) }
+		]);
+
+		// device A creates an entry and pushes it encrypted.
+		const deviceA = new Y.Doc();
+		deviceA.getText('text').insert(0, 'a secret entry');
+		const createdPlaintext = Y.encodeStateAsUpdate(deviceA);
+		await pushChanges(cfg, [{ entryId, update: await encryptBytes(keyA, createdPlaintext) }]);
+
+		// device B has never synced before: a single pull sees both pushes
+		// (the `_e2ee_meta` doc and the encrypted entry). It applies
+		// `_e2ee_meta` first regardless of lock state (exactly as
+		// sync/engine.ts's pull loop does), derives its own key from the same
+		// passphrase + the synced salt, and confirms it via the verifier
+		// before trusting it against real data.
+		const { changes } = await pullChanges(cfg, 0, 1000);
+		const metaUpdate = changes.find((c) => c.entryId === E2EE_META_DOC_ID)!.update;
+		const metaDocB = new Y.Doc();
+		Y.applyUpdate(metaDocB, metaUpdate);
+		const pulledConfig = getE2eeConfig(metaDocB)!;
+		const keyB = await deriveKey(
+			'correct horse battery staple',
+			pulledConfig.salt,
+			pulledConfig.iterations
+		);
+		expect(await checkVerifier(keyB, pulledConfig.verifier)).toBe(true);
+
+		const encryptedEntryUpdate = changes.find((c) => c.entryId === entryId)!.update;
+
+		const deviceB = new Y.Doc();
+		Y.applyUpdate(deviceB, await decryptBytes(keyB, encryptedEntryUpdate));
+		expect(deviceB.getText('text').toString()).toBe('a secret entry');
+
+		// a third device with the wrong passphrase derives a different key
+		// from the same (public) salt, fails the verifier check, and cannot
+		// decrypt device A's real ciphertext — AES-GCM's own authentication is
+		// what backs "wrong passphrase" detection, not just garbled output.
+		const keyC = await deriveKey(
+			'wrong passphrase entirely',
+			pulledConfig.salt,
+			pulledConfig.iterations
+		);
+		expect(await checkVerifier(keyC, pulledConfig.verifier)).toBe(false);
+		await expect(decryptBytes(keyC, encryptedEntryUpdate)).rejects.toThrow();
 	});
 });

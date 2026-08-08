@@ -162,13 +162,13 @@ fn putBlob(h: *Handler, req: *httpz.Request, res: *httpz.Response) !void {
         return try res.json(.{ .@"error" = "invalid_id" }, .{});
     };
 
+    // `id` is a client-chosen opaque identifier, not verified against the
+    // body's content hash — the client may be uploading an E2EE envelope
+    // (see PLAN.md "encryption"), whose hash can never match a plaintext
+    // content-address, and AES-GCM's own auth tag already gives the same
+    // integrity guarantee on decrypt. this mirrors how `entry_id` is
+    // already treated as fully opaque for CRDT updates.
     const bytes = req.body() orelse "";
-    const digest = sha256Hex(bytes);
-    if (!constantTimeEql(&digest, id)) {
-        res.status = 400;
-        return try res.json(.{ .@"error" = "hash_mismatch" }, .{});
-    }
-
     try db.putBlob(h.db, id, bytes);
 
     res.status = 200;
@@ -283,21 +283,6 @@ test "pushChanges then pullChanges via the handlers" {
     try std.testing.expectEqual(@as(usize, 1), changes.items.len);
     try std.testing.expectEqualStrings("entry-1", changes.items[0].object.get("entry_id").?.string);
     try std.testing.expectEqual(@as(i64, 1), json.object.get("cursor").?.integer);
-}
-
-test "putBlob rejects a hash that doesn't match the body" {
-    const conn = try db.open(":memory:");
-    defer conn.close();
-    var handler = Handler{ .db = conn, .auth_token = "secret" };
-
-    var ht = httpz.testing.init(.{});
-    defer ht.deinit();
-    ht.header("Authorization", "Bearer secret");
-    ht.param("id", "0" ** 64);
-    ht.body("not the right content");
-
-    try putBlob(&handler, ht.req, ht.res);
-    try ht.expectStatus(400);
 }
 
 test "putBlob then getBlob round-trips via the handlers" {

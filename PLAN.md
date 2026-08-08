@@ -161,9 +161,78 @@ a dumb, durable relay.
 - sync engine runs pull-then-push on app start, on the `online` event, and debounced after local writes
 - deletion = `meta.deleted = true` tombstone inside the doc, so it propagates like any edit
 - compaction (later, optional): a client may post a merged snapshot update and the server can drop that entry's older updates once all known devices' cursors have passed them. not needed for v1 — diary entries are small and the log is cheap
-- v1 auth: single user, one long random bearer token in the server config. TLS is left to a reverse proxy (caddy/nginx). end-to-end encryption is a natural v2 here (the server already treats updates as opaque bytes — encrypting them client-side wouldn't change the protocol at all), but out of scope for now
+- v1 auth: single user, one long random bearer token in the server config. TLS is left to a reverse proxy (caddy/nginx). end-to-end encryption of everything that crosses this boundary is implemented — see "encryption" below
 - client implementation (`app/src/lib/sync/`): `api.ts` (fetch wrapper matching `docs/protocol.md`, base64 (de)coding), `outbox.ts` (read/delete queued updates by rowid), `blobs.ts` (push un-pushed attachments, fetch attachments newly referenced by pulled docs), `engine.ts` (`syncOnce()` = pull-then-push; `initSyncEngine()` wires start/`online`/debounced-after-write). `entries/store.ts` gained `applyRemoteUpdate` (applies a pulled update and re-materializes *without* re-queuing it to the outbox) and a `sync/notify.ts` pub/sub so a local write can trigger a debounced sync without `entries/store.ts` importing the sync engine (avoiding a circular import)
 - the sync server needs CORS (`Access-Control-Allow-Origin`, handling the browser's `OPTIONS` preflight) since it's a separate origin from the PWA — httpz ships a `middleware.Cors` for exactly this, registered once as a server-wide middleware in `main.zig`
+
+## encryption
+
+Passphrase-based end-to-end encryption of everything that crosses the sync
+boundary — CRDT updates (entries + `_diaries`) and photo blobs. **Scope is
+deliberately limited to the wire/server side**: local sqlite/OPFS storage on
+each device is completely unaffected, exactly as before this feature — no
+in-memory materialized index, no changes to search/calendar/tags/streak/map,
+no passphrase required for local-only usage. A broader "no plaintext stored
+anywhere, including locally" version of this was designed and rejected in
+favor of this smaller one — see `SECURE-STORE-INVESTIGATION.md` for the full
+comparison (that doc also covers, and rejects, whole-database-at-rest
+encryption via SQLite3 Multiple Ciphers/OPFS: immature WASM support, no
+official docs, real toolchain risk on top of the APK build's existing
+quirks).
+
+- **key derivation**: PBKDF2-HMAC-SHA256 via native `crypto.subtle`, 600,000
+  iterations (OWASP's current recommendation), deriving an AES-256-GCM key.
+  No new dependency — `crypto.subtle` is already used elsewhere (photo
+  content hashing) and is available in every runtime this app ships to.
+- **cipher**: AES-256-GCM, random 96-bit IV per encryption call, prepended
+  to the ciphertext+tag. No format marker is needed: once a passphrase is
+  set, every push is unconditionally encrypted (this assumes a fresh
+  database — no mixed plaintext/ciphertext history to reconcile).
+- **cross-device bootstrap**: a new well-known, always-plaintext Y.Doc,
+  reserved id `_e2ee_meta`, holding one atomic `{salt, iterations, verifier}`
+  value (a `Y.Map` with a single key, so a Y.Map merge between two devices
+  that raced to set up encryption concurrently with different passphrases
+  can never mix one device's salt with another's verifier — one whole
+  config wins). Travels through the exact same outbox/`/api/changes` log as
+  `_diaries` — the server already treats `entry_id` as opaque, so this
+  needed no server change. The verifier is an AES-GCM encryption of a fixed
+  known string under the candidate key; a wrong passphrase simply fails
+  AES-GCM's auth tag on decrypt, which *is* the "wrong passphrase" signal
+  (`e2ee/crypto.ts`'s `computeVerifier`/`checkVerifier`).
+- **mandatory, no plaintext escape hatch**: a passphrase isn't optional once
+  sync is configured — `sync/engine.ts`'s `pull()`/`push()` never send or
+  apply an entry/`_diaries` update or a photo blob without a verified key,
+  full stop. The one exception is `_e2ee_meta` itself, which is always
+  applied regardless of key state — it has to be, so a fresh device can
+  learn the salt before it can derive anything (`getConfig()` only requires
+  a server url + token, precisely so this bootstrap pull can still happen;
+  the *key* requirement is enforced per-change inside `pull()`/`push()`, not
+  by refusing to sync at all). Until a passphrase is verified, a configured
+  sync target simply transmits and receives nothing but that one bootstrap
+  doc — surfaced to the user as a `locked` `SyncResult`, not a silent
+  plaintext fallback.
+- **key persistence**: the derived key (never the passphrase) is persisted
+  locally as a plaintext `sync_state` row (`settings/store.ts`'s
+  `getE2eeKeyMaterial`/`setE2eeKeyMaterial`) — same trust model already used
+  for the plaintext-stored bearer token, so the passphrase is entered once
+  per device, not every session. Platform-native hardening (Android
+  Keystore, etc.) was investigated and explicitly deferred — see
+  `SECURE-STORE-INVESTIGATION.md`.
+- **photo blobs**: encrypted the same way (`sync/blobs.ts`), still addressed
+  by the existing local plaintext-content hash (`attachments.id` —
+  unchanged). This meant relaxing the server's blob upload verification
+  (`sha256(body) == id`, `server/src/api.zig`'s `putBlob`): it can never
+  hold once the body is ciphertext, and AES-GCM's own auth tag already gives
+  the same integrity guarantee on decrypt. The alternative (address blobs by
+  `sha256(ciphertext)` instead) was rejected — a receiving device can't
+  derive that id without already having the ciphertext it's trying to
+  fetch, which would require syncing a new per-photo id field and writing
+  it back into the entry's Y.Doc after every push.
+- known limitations: no passphrase rotation/history re-encryption in v1; the
+  rare case of two never-yet-synced devices concurrently setting *different*
+  passphrases resolves deterministically once they sync (Y.Map LWW), but the
+  losing device's already-cached key then fails and surfaces as a normal
+  sync error until the user re-enters the winning passphrase.
 
 ## server (`server/`)
 
@@ -174,7 +243,7 @@ a dumb, durable relay.
 
 ```sql
 updates(seq INTEGER PRIMARY KEY AUTOINCREMENT, entry_id TEXT, update BLOB, received_at TEXT)
-blobs(id TEXT PRIMARY KEY, bytes BLOB)   -- id = sha-256, verified on upload
+blobs(id TEXT PRIMARY KEY, bytes BLOB)   -- id is client-chosen and opaque, not server-verified (see "encryption")
 ```
 
 - endpoints: the sync api above + `GET /api/health` — see `docs/protocol.md` for the full wire contract
@@ -220,6 +289,7 @@ dayzero/
 9. **polish**: export/import — done as a single sqlite file (`app/src/lib/settings/backup.ts`), per "defaults chosen" below, not the zip-of-markdown+photos alternative; pwa icons/manifest — done (milestone 1); empty states — done (timeline, `/map`); lighthouse pass — remaining
 10. **android apk**: wraps the static build in Capacitor (`app/capacitor.config.ts`, `app/android/`, see `APK-PLAN.md`) so it installs and runs from a bundled `https://localhost` WebView origin — a secure context, which OPFS (the sqlite storage layer) requires — rather than a hosted/TWA origin; Android SDK + JDK 21 added to the nix devshell (`flake.nix`); native geolocation via `@capacitor/geolocation` (the plain web API gets no permission prompt inside a plain WebView); native backup export via `@capacitor/filesystem` (a Blob + `<a download>` silently no-ops in a WebView); debug APK builds successfully (`./gradlew assembleDebug`) — on-device confirmation of the full app (OPFS-backed pages, native location, native backup export) is the remaining step, see `BUGS.md`
 11. **multiple diaries**: entries can belong to a named diary (`meta.diary_id`, absent = virtual default "journal"); the diary registry is a well-known `_diaries` Y.Doc synced through the existing log (no server changes); a nav diary switcher scopes timeline/on-this-day/streak/calendar/tags/map (device-local selection, not synced); the entry editor's diary select doubles as "move entry"; `/settings` gets a diaries section to create/rename/delete (delete requires the diary to be empty first)
+12. **end-to-end encryption**: `app/src/lib/e2ee/` (ids, ydoc, crypto, store, session) — PBKDF2/AES-256-GCM via native `crypto.subtle`, a well-known `_e2ee_meta` bootstrap doc for cross-device salt/verifier distribution; `sync/engine.ts` requires a verified passphrase alongside the server url/token, encrypting every entry/`_diaries` update and photo blob once configured; `/settings` gets a passphrase field; `server/src/api.zig`'s blob upload hash verification was removed (see "encryption"); scope is deliberately sync-only — local storage is unaffected, see `SECURE-STORE-INVESTIGATION.md`
 
 ## verification
 
@@ -229,11 +299,12 @@ dayzero/
 - `server`: `zig build test`; curl-based integration script (push updates, pull from zero cursor, blob round-trip, auth rejection)
 - end-to-end: `server/test-e2e-sync.sh` starts a real server and runs the vitest sync harness (`sync/e2e.test.ts`, skipped unless `DAYZERO_E2E_SERVER_URL`/`DAYZERO_E2E_TOKEN` are set) against it — two `Y.Doc`s standing in for two devices push/pull through the real HTTP protocol and are asserted to converge after concurrent edits
 - manual: two isolated browser profiles (separate OPFS storage, same real server) exercising the actual UI end to end — create an entry on device A, sync, pull it up on device B, edit concurrently on both (text on A, a tag on B) without syncing, then sync in order and confirm both devices converge to the same markdown + tags
+- `app`: vitest for the E2EE primitives — KDF determinism, encrypt/decrypt round-tripping, verifier accept/reject, key-material export/import (`e2ee/crypto.test.ts`); the bootstrap doc's atomic-config convergence under a concurrent-setup race (`e2ee/ydoc.test.ts`); `sync/e2e.test.ts` extended with two simulated devices converging over ciphertext plus a wrong-passphrase negative case
 
 ## defaults chosen (flag if you disagree)
 
 - yjs for the CRDT (mature, tiny (~tens of KB), battle-tested, good codemirror binding for later) rather than automerge (heavier wasm) or loro (younger). server stays CRDT-agnostic either way
 - single-user server with one bearer token (no accounts) — it's self-hosted and personal
 - photos live inside sqlite as blobs (content-addressed) rather than as loose files — one-file backup, simpler sync
-- no end-to-end encryption in v1 (but the opaque-blob protocol makes it easy to add)
+- end-to-end encryption is scoped to the sync wire only (entries/`_diaries` updates + photo blobs) — local sqlite/OPFS storage is unaffected by design; see "encryption" and `SECURE-STORE-INVESTIGATION.md`
 - sveltekit static rather than bare vite+svelte — free routing and structure, still a pure static PWA

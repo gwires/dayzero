@@ -68,6 +68,24 @@ export function setSyncCursor(cursor: number): Promise<void> {
 	return setSetting(SYNC_CURSOR_KEY, String(cursor));
 }
 
+const E2EE_KEY_MATERIAL_KEY = 'e2ee_key_material';
+
+/**
+ * this device's unlocked E2EE key, persisted as raw AES-256 key bytes
+ * (base64) — NOT the passphrase. Same trust model as `sync_token`: local
+ * sqlite/OPFS is this app's existing trust boundary, so storing this in the
+ * clear here is fine; it just saves the user from re-entering their
+ * passphrase every session. See e2ee/crypto.ts's export/importKeyMaterial
+ * and e2ee/session.ts.
+ */
+export function getE2eeKeyMaterial(): Promise<string | undefined> {
+	return getSetting(E2EE_KEY_MATERIAL_KEY);
+}
+
+export function setE2eeKeyMaterial(material: string | undefined): Promise<void> {
+	return setSetting(E2EE_KEY_MATERIAL_KEY, material);
+}
+
 const CURRENT_DIARY_KEY = 'current_diary_id';
 
 /** device-local diary scope for the ui — a diary id, or 'all'. not synced. */
