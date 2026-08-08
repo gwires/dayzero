@@ -73,7 +73,7 @@ async function handle(req: DbRequest): Promise<DbResponse> {
 			}
 			case 'clearAllData': {
 				db.close();
-				await pool.wipeFiles();
+				pool.unlink(DB_FILENAME);
 				db = new pool.OpfsSAHPoolDb(DB_FILENAME);
 				applyMigrations(db);
 				return { id: req.id, ok: true, rows: [] };
