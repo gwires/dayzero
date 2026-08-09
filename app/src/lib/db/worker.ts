@@ -20,13 +20,12 @@ async function openDb(): Promise<Database> {
 	} catch (err) {
 		// SAH pool can fail with "No modification allowed" when OPFS handles
 		// are read-only (storage partitioning, third-party cookie blocking, or
-		// an existing file locked by another tab). Fall back to the simpler
-		// opfs VFS which uses the direct OPFS file API without SAH pooling.
+		// an existing file locked by another tab). Fall back to the WebLocks
+		// variant which uses a different locking mechanism and doesn't go
+		// through the async proxy worker that the SAH pool uses.
 		if (err instanceof Error && err.message.includes('modification')) {
 			pool = null;
-			const vfsName = 'opfs';
-			await sqlite3.installOpfsVfs({ name: vfsName, default: true });
-			return new sqlite3.oo1.DB(DB_FILENAME, { vfs: vfsName, create: true });
+			return new sqlite3.oo1.OpfsWlDb(DB_FILENAME);
 		}
 		throw err;
 	}
@@ -83,8 +82,8 @@ async function handle(req: DbRequest): Promise<DbResponse> {
 					db = new pool.OpfsSAHPoolDb(DB_FILENAME);
 				} else {
 					db.close();
-					await sqlite3.oo1.OpfsDb.importDb(DB_FILENAME, req.bytes);
-					db = new sqlite3.oo1.OpfsDb(DB_FILENAME);
+					await sqlite3.oo1.OpfsWlDb.importDb(DB_FILENAME, req.bytes);
+					db = new sqlite3.oo1.OpfsWlDb(DB_FILENAME);
 				}
 				applyMigrations(db);
 				return { id: req.id, ok: true, rows: [] };
@@ -103,7 +102,7 @@ async function handle(req: DbRequest): Promise<DbResponse> {
 					} catch {
 						// file may not exist if the db was just created
 					}
-					db = new sqlite3.oo1.OpfsDb(DB_FILENAME);
+					db = new sqlite3.oo1.OpfsWlDb(DB_FILENAME);
 				}
 				applyMigrations(db);
 				return { id: req.id, ok: true, rows: [] };
