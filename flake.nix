@@ -73,6 +73,31 @@
       {
         devShells.default = pkgs.mkShell {
           packages = [
+            pkgs.chromium
+            pkgs.xvfb
+            pkgs.at-spi2-atk
+            pkgs.atk
+            pkgs.cups
+            pkgs.cups-filters
+            pkgs.dbus
+            pkgs.glib
+            pkgs.libdrm
+            pkgs.libglvnd
+            pkgs.libxkbcommon
+            pkgs.mesa
+            pkgs.nspr
+            pkgs.nss
+            pkgs.pulseaudio
+            pkgs.wayland
+            pkgs.libx11
+            pkgs.libxscrnsaver
+            pkgs.libxcomposite
+            pkgs.libxdamage
+            pkgs.libxext
+            pkgs.libxfixes
+            pkgs.libxrandr
+            pkgs.libxshmfence
+
             pkgs.zig_0_14
             pkgs.zls_0_14
             pkgs.nodejs_22
@@ -83,6 +108,7 @@
             pkgs.unzip
             pkgs.dejavu_fonts
             pkgs.openssl
+            pkgs.playwright
             androidSdk
             pkgs.jdk21
           ];
@@ -91,6 +117,7 @@
             export ANDROID_HOME=${androidSdk}/libexec/android-sdk
             export ANDROID_SDK_ROOT=$ANDROID_HOME
             export GRADLE_OPTS="-Dorg.gradle.project.android.aapt2FromMavenOverride=$ANDROID_HOME/build-tools/36.0.0/aapt2"
+            export DISPLAY=:99
           '';
         };
       }

@@ -9,12 +9,27 @@ declare const self: DedicatedWorkerGlobalScope;
 const DB_FILENAME = '/dayzero.sqlite';
 
 let db: Database;
-let pool: SAHPoolUtil;
+let pool: SAHPoolUtil | null;
+let sqlite3: Awaited<ReturnType<typeof sqlite3InitModule>>;
 
 async function openDb(): Promise<Database> {
-	const sqlite3 = await sqlite3InitModule();
-	pool = await sqlite3.installOpfsSAHPoolVfs({ name: 'dayzero-opfs' });
-	return new pool.OpfsSAHPoolDb(DB_FILENAME);
+	sqlite3 = await sqlite3InitModule();
+	try {
+		pool = await sqlite3.installOpfsSAHPoolVfs({ name: 'dayzero-opfs' });
+		return new pool.OpfsSAHPoolDb(DB_FILENAME);
+	} catch (err) {
+		// SAH pool can fail with "No modification allowed" when OPFS handles
+		// are read-only (storage partitioning, third-party cookie blocking, or
+		// an existing file locked by another tab). Fall back to the simpler
+		// opfs VFS which uses the direct OPFS file API without SAH pooling.
+		if (err instanceof Error && err.message.includes('modification')) {
+			pool = null;
+			const vfsName = 'opfs';
+			await sqlite3.installOpfsVfs({ name: vfsName, default: true });
+			return new sqlite3.oo1.DB(DB_FILENAME, { vfs: vfsName, create: true });
+		}
+		throw err;
+	}
 }
 
 function applyMigrations(conn: Database) {
@@ -53,28 +68,43 @@ async function handle(req: DbRequest): Promise<DbResponse> {
 				return { id: req.id, ok: true, rows };
 			}
 			case 'exportDb': {
-				// copy into a fresh, exactly-sized buffer so the caller can
-				// safely transfer it (rather than structured-cloning a
-				// potentially large sqlite file across the worker boundary).
-				const bytes = new Uint8Array(await pool.exportFile(DB_FILENAME));
+				if (pool) {
+					const bytes = new Uint8Array(await pool.exportFile(DB_FILENAME));
+					return { id: req.id, ok: true, bytes };
+				}
+				// fallback: serialize from the db pointer directly
+				const bytes = sqlite3.capi.sqlite3_js_db_export(db.pointer);
 				return { id: req.id, ok: true, bytes };
 			}
 			case 'importDb': {
-				// the SAH pool VFS manages this file across several handles
-				// internally, so a live `Database` can't just be pointed at
-				// new bytes — close it, let the pool overwrite the file, then
-				// reopen and bring it up to the current schema version (the
-				// imported file may be an older export).
-				db.close();
-				await pool.importDb(DB_FILENAME, req.bytes);
-				db = new pool.OpfsSAHPoolDb(DB_FILENAME);
+				if (pool) {
+					db.close();
+					await pool.importDb(DB_FILENAME, req.bytes);
+					db = new pool.OpfsSAHPoolDb(DB_FILENAME);
+				} else {
+					db.close();
+					await sqlite3.oo1.OpfsDb.importDb(DB_FILENAME, req.bytes);
+					db = new sqlite3.oo1.OpfsDb(DB_FILENAME);
+				}
 				applyMigrations(db);
 				return { id: req.id, ok: true, rows: [] };
 			}
 			case 'clearAllData': {
-				db.close();
-				pool.unlink(DB_FILENAME);
-				db = new pool.OpfsSAHPoolDb(DB_FILENAME);
+				if (pool) {
+					db.close();
+					pool.unlink(DB_FILENAME);
+					db = new pool.OpfsSAHPoolDb(DB_FILENAME);
+				} else {
+					db.close();
+					const root = await navigator.storage.getDirectory();
+					const dir = await root.getDirectoryHandle('opfs', { create: true });
+					try {
+						await dir.removeEntry(DB_FILENAME.replace(/^\//, ''));
+					} catch {
+						// file may not exist if the db was just created
+					}
+					db = new sqlite3.oo1.OpfsDb(DB_FILENAME);
+				}
 				applyMigrations(db);
 				return { id: req.id, ok: true, rows: [] };
 			}
