@@ -53,12 +53,16 @@ since the embed step locates `app/build` relative to the working directory.
   to its own ABI-incompatible libc++. The shim needs `-DWEBVIEW_STATIC`,
   otherwise the C API is emitted as `inline` and nothing links.
 - On macOS, zig's own SDK detection (running `xcrun`) fails inside the nix
-  devshell, so `build.zig` locates the SDK itself (`SDKROOT` — unless it
-  points into `/nix/store`, where nixpkgs' trimmed apple-sdk stub has no
-  WebKit — then `xcrun`, then well-known Command Line Tools / Xcode paths)
-  and wires it up explicitly: `-F <sdk>/System/Library/Frameworks` for the
-  MachO linker's framework search (which ignores `--sysroot`), `-isysroot`
-  for the shim compilation.
+  devshell, so `build.zig` locates the SDK itself: non-nix `SDKROOT`, then
+  `xcrun` (with `SDKROOT` removed from its environment — otherwise it
+  echoes the stub back), then the well-known Command Line Tools / Xcode
+  paths, then nixpkgs' pruned apple-sdk stub as last resort (the
+  nix-darwin case). The stub has the framework `.tbd`s but no C++
+  standard-library headers, so the shim is also given `-idirafter` zig's
+  bundled libc++ headers (searched last, so a complete SDK's own `c++/v1`
+  always wins). `-F <sdk>/System/Library/Frameworks` feeds the MachO
+  linker's framework search (which ignores `--sysroot`), and `link_libcpp`
+  supplies `-lc++`.
 - Window: 1100×800, resizable, title "dayzero", webview created with
   debug enabled (devtools).
 

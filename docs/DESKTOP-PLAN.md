@@ -94,16 +94,23 @@ near-term sign of one. Options considered:
   be compiled with `-DWEBVIEW_STATIC`, and on Linux the shim is compiled by
   the host `c++` with the host's `libstdc++`/`libgcc_s` linked directly
   (zig maps `-lstdc++` to its ABI-incompatible bundled libc++)
-- second caveat (found on a real Mac): zig resolves the WebKit framework
-  via an SDK path it detects by running `xcrun`, which fails inside
-  `nix develop` ("unable to find framework 'WebKit'. searched paths:
-  none"). `build.zig` now finds the SDK itself — `SDKROOT` env (unless
-  it points into `/nix/store`: there it refers to nixpkgs' trimmed
-  apple-sdk stub, which has no WebKit), then `xcrun --show-sdk-path`,
-  then the well-known Command Line Tools / Xcode directories — and wires
-  it up explicitly: `-F <sdk>/System/Library/Frameworks` for the MachO
-  linker's framework search (which ignores `--sysroot`), `-isysroot` for
-  the shim compilation, and `b.sysroot` for good measure
+- second caveat (found on a real Mac, a nix-darwin machine): zig resolves
+  the SDK by running `xcrun`, which fails inside `nix develop` ("unable
+  to find framework 'WebKit'. searched paths: none"), and `xcrun` echoes
+  the `SDKROOT` env var — which in the devshell points at nixpkgs'
+  pruned apple-sdk stub, good for linking (it has the framework `.tbd`s)
+  but lacking the C++ standard-library headers. `build.zig` now finds
+  the SDK itself — non-nix `SDKROOT`, then `xcrun` (run with `SDKROOT`
+  removed from its environment, and only after `xcode-select
+  --print-path` succeeds, to avoid the CLT install popup), then the
+  well-known Command Line Tools / Xcode directories, and finally the
+  nix-store stub as last resort — and wires it up explicitly: `-F
+  <sdk>/System/Library/Frameworks` for the MachO linker's framework
+  search (which ignores `--sysroot`), `-isysroot` for the shim
+  compilation, `-idirafter <zig-lib>/libcxx/include` (zig's bundled
+  libc++ headers, searched last, filling the stub's gap without ever
+  shadowing a complete SDK's own `c++/v1`), and `link_libcpp` for `-lc++`
+  at link time
 
 The webview window itself was exercised under Xvfb: page loads, JS runs.
 On Linux it fails at database open ("Missing required OPFS APIs" — the

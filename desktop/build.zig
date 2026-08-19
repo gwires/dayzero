@@ -94,25 +94,36 @@ fn addWebview(b: *std.Build, exe_mod: *std.Build.Module, target: std.Build.Resol
             }
         },
         .macos => {
-            // zig resolves frameworks via the SDK path it detects by
-            // running xcrun, which fails inside nix develop ("unable to
-            // find framework 'WebKit'. searched paths: none"), so find
-            // the SDK ourselves and pass it explicitly. Note that
-            // --sysroot alone is not enough: the MachO linker's
-            // framework search only honors -F directories, and the
-            // devshell's SDKROOT points at nixpkgs' trimmed apple-sdk
-            // stub, which doesn't contain WebKit in the first place.
+            // zig resolves the SDK by running xcrun, which fails inside
+            // nix develop, so find the SDK ourselves and pass it
+            // explicitly. Note that --sysroot alone is not enough: the
+            // MachO linker's framework search only honors -F directories.
+            // Two kinds of SDKs are accepted: a complete one (Command
+            // Line Tools / Xcode), or nixpkgs' pruned apple-sdk stub
+            // that nix-darwin devshells export as SDKROOT — the stub has
+            // no C++ standard library headers, so zig's bundled libc++
+            // is appended as an -idirafter fallback below.
             const sdk = findMacosSdk(b) orelse @panic(
                 "no macOS SDK found: set SDKROOT, or install the Command Line Tools (xcode-select --install)",
             );
             b.sysroot = sdk;
             exe_mod.addFrameworkPath(.{ .cwd_relative = try std.fs.path.join(b.allocator, &.{ sdk, "System", "Library", "Frameworks" }) });
+            // the shim is compiled by zig's own clang here, so zig's
+            // libc++ choice is ABI-correct; on Linux the host compiler
+            // owns the ABI and this must stay unset (see that branch).
+            exe_mod.link_libcpp = true;
 
             exe_mod.addIncludePath(b.path("lib/webview"));
-            const flags = [_][]const u8{ "-std=c++17", "-DWEBVIEW_STATIC", "-isysroot", sdk };
+            var flags = std.ArrayList([]const u8).init(b.allocator);
+            try flags.appendSlice(&.{ "-std=c++17", "-DWEBVIEW_STATIC", "-isysroot", sdk });
+            // zig ships libc++'s headers for cross-compilation; searched
+            // last (-idirafter), so a complete SDK's own c++/v1 wins and
+            // the bundled headers only fill the pruned stub's gap.
+            try flags.append("-idirafter");
+            try flags.append(try b.graph.zig_lib_directory.join(b.allocator, &.{ "libcxx", "include" }));
             exe_mod.addCSourceFile(.{
                 .file = b.path("src/webview_shim.cpp"),
-                .flags = &flags,
+                .flags = flags.items,
             });
             exe_mod.linkFramework("WebKit", .{});
         },
@@ -192,23 +203,50 @@ fn pathLessThan(_: void, a: []const u8, cmp_b: []const u8) bool {
     return std.mem.order(u8, a, cmp_b) == .lt;
 }
 
+/// xcrun itself honors SDKROOT, so run it with a sanitized environment —
+/// otherwise it just echoes the nix-store stub the devshell exports.
+/// xcode-select is checked first, like zig's own detection: running xcrun
+/// without the Command Line Tools installed triggers the CLT install popup.
+fn runXcrunSdkPath(b: *std.Build) ?[]const u8 {
+    var env_map = std.process.getEnvMap(b.allocator) catch return null;
+    defer env_map.deinit();
+    _ = env_map.remove("SDKROOT");
+    const check = std.process.Child.run(.{
+        .allocator = b.allocator,
+        .argv = &.{ "xcode-select", "--print-path" },
+        .env_map = &env_map,
+    }) catch return null;
+    defer b.allocator.free(check.stdout);
+    defer b.allocator.free(check.stderr);
+    if (check.term != .Exited or check.term.Exited != 0 or check.stdout.len == 0) return null;
+    const result = std.process.Child.run(.{
+        .allocator = b.allocator,
+        .argv = &.{ "xcrun", "--show-sdk-path" },
+        .env_map = &env_map,
+    }) catch return null;
+    defer b.allocator.free(result.stdout);
+    defer b.allocator.free(result.stderr);
+    if (result.term != .Exited or result.term.Exited != 0) return null;
+    const path = std.mem.trim(u8, result.stdout, " \t\r\n");
+    if (path.len == 0 or !std.fs.path.isAbsolute(path)) return null;
+    if (std.mem.startsWith(u8, path, "/nix/store/")) return null;
+    return b.dupe(path);
+}
+
 /// Locate the macOS SDK: honor SDKROOT, then ask xcrun, then probe the
 /// well-known Command Line Tools / Xcode locations. Mirrors what clang's
 /// driver does, because zig's own detection only tries xcrun and silently
 /// gives up inside nix develop shells.
 fn findMacosSdk(b: *std.Build) ?[]const u8 {
     // Honor SDKROOT unless it points into the nix store: there it refers
-    // to nixpkgs' trimmed apple-sdk stub, which lacks the WebKit
-    // framework the webview links against.
+    // to nixpkgs' trimmed apple-sdk stub, which lacks the C++ standard
+    // library headers the webview shim needs.
     if (std.posix.getenv("SDKROOT")) |env| {
         if (env.len > 0 and !std.mem.startsWith(u8, env, "/nix/store/")) {
             return b.dupe(env);
         }
     }
-    if (run(b, &.{ "xcrun", "--show-sdk-path" })) |out| {
-        const path = std.mem.trim(u8, out, " \t\r\n");
-        if (path.len > 0 and std.fs.path.isAbsolute(path)) return b.dupe(path);
-    }
+    if (runXcrunSdkPath(b)) |path| return path;
     for ([_][]const u8{
         "/Library/Developer/CommandLineTools/SDKs",
         "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs",
@@ -227,6 +265,13 @@ fn findMacosSdk(b: *std.Build) ?[]const u8 {
             }
         }
         if (best) |name| return std.fs.path.join(b.allocator, &.{ sdks_dir, name }) catch null;
+    }
+    // Last resort (nix-darwin without Command Line Tools): accept the
+    // nix-store SDK stub from SDKROOT after all; the shim's -idirafter
+    // zig-bundled libc++ headers compensate for its missing C++ standard
+    // library.
+    if (std.posix.getenv("SDKROOT")) |env| {
+        if (env.len > 0) return b.dupe(env);
     }
     return null;
 }
