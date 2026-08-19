@@ -52,6 +52,11 @@ since the embed step locates `app/build` relative to the working directory.
   host's `libstdc++`/`libgcc_s` are linked directly — zig maps `-lstdc++`
   to its own ABI-incompatible libc++. The shim needs `-DWEBVIEW_STATIC`,
   otherwise the C API is emitted as `inline` and nothing links.
+- On macOS, zig's own SDK detection (running `xcrun`) fails inside the nix
+  devshell, so `build.zig` locates the SDK itself (`SDKROOT` → `xcrun` →
+  well-known Command Line Tools / Xcode paths) and passes it explicitly
+  (`b.sysroot` for the linker's framework search, `-isysroot` for the
+  shim).
 - Window: 1100×800, resizable, title "dayzero", webview created with
   debug enabled (devtools).
 

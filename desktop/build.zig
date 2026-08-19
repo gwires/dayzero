@@ -94,11 +94,20 @@ fn addWebview(b: *std.Build, exe_mod: *std.Build.Module, target: std.Build.Resol
             }
         },
         .macos => {
-            // macOS toolchains locate the SDK's C++ headers themselves.
+            // zig resolves frameworks via the SDK path it detects by
+            // running xcrun, which fails inside nix develop ("unable to
+            // find framework 'WebKit'. searched paths: none"), so find
+            // the SDK ourselves and pass it explicitly.
+            const sdk = findMacosSdk(b) orelse @panic(
+                "no macOS SDK found: set SDKROOT, or install the Command Line Tools (xcode-select --install)",
+            );
+            b.sysroot = sdk;
+
             exe_mod.addIncludePath(b.path("lib/webview"));
+            const flags = [_][]const u8{ "-std=c++17", "-DWEBVIEW_STATIC", "-isysroot", sdk };
             exe_mod.addCSourceFile(.{
                 .file = b.path("src/webview_shim.cpp"),
-                .flags = &.{ "-std=c++17", "-DWEBVIEW_STATIC" },
+                .flags = &flags,
             });
             exe_mod.linkFramework("WebKit", .{});
         },
@@ -176,6 +185,40 @@ fn addWebEmbed(b: *std.Build, exe_mod: *std.Build.Module) !void {
 
 fn pathLessThan(_: void, a: []const u8, cmp_b: []const u8) bool {
     return std.mem.order(u8, a, cmp_b) == .lt;
+}
+
+/// Locate the macOS SDK: honor SDKROOT, then ask xcrun, then probe the
+/// well-known Command Line Tools / Xcode locations. Mirrors what clang's
+/// driver does, because zig's own detection only tries xcrun and silently
+/// gives up inside nix develop shells.
+fn findMacosSdk(b: *std.Build) ?[]const u8 {
+    if (std.posix.getenv("SDKROOT")) |env| {
+        if (env.len > 0) return b.dupe(env);
+    }
+    if (run(b, &.{ "xcrun", "--show-sdk-path" })) |out| {
+        const path = std.mem.trim(u8, out, " \t\r\n");
+        if (path.len > 0 and std.fs.path.isAbsolute(path)) return b.dupe(path);
+    }
+    for ([_][]const u8{
+        "/Library/Developer/CommandLineTools/SDKs",
+        "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs",
+    }) |sdks_dir| {
+        var dir = std.fs.cwd().openDir(sdks_dir, .{ .iterate = true }) catch continue;
+        defer dir.close();
+        var best: ?[]const u8 = null;
+        var it = dir.iterate();
+        while (it.next() catch null) |entry| {
+            if (!std.mem.startsWith(u8, entry.name, "MacOSX")) continue;
+            if (!std.mem.endsWith(u8, entry.name, ".sdk")) continue;
+            // names are version-sorted (MacOSX14.5.sdk, ...), so the
+            // lexicographically greatest entry is the newest SDK
+            if (best == null or std.mem.order(u8, entry.name, best.?) == .gt) {
+                best = b.dupe(entry.name);
+            }
+        }
+        if (best) |name| return std.fs.path.join(b.allocator, &.{ sdks_dir, name }) catch null;
+    }
+    return null;
 }
 
 /// zig build is invoked from desktop/, but accept the repo root too.

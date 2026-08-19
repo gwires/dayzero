@@ -94,6 +94,14 @@ near-term sign of one. Options considered:
   be compiled with `-DWEBVIEW_STATIC`, and on Linux the shim is compiled by
   the host `c++` with the host's `libstdc++`/`libgcc_s` linked directly
   (zig maps `-lstdc++` to its ABI-incompatible bundled libc++)
+- second caveat (found on a real Mac): zig resolves the WebKit framework
+  via an SDK path it detects by running `xcrun`, which fails inside
+  `nix develop` ("unable to find framework 'WebKit'. searched paths:
+  none"). `build.zig` now finds the SDK itself — `SDKROOT` env, then
+  `xcrun --show-sdk-path`, then the well-known Command Line Tools / Xcode
+  directories — and passes it as both `b.sysroot` (`--sysroot`, which
+  feeds the MachO linker's framework search) and `-isysroot` for the shim
+  compilation
 
 The webview window itself was exercised under Xvfb: page loads, JS runs.
 On Linux it fails at database open ("Missing required OPFS APIs" — the
