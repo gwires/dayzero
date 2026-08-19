@@ -59,39 +59,65 @@ engines should work: WKWebView has OPFS (Safari 16.4-era WebKit) and
 WebView2 is Chromium (OPFS since Chrome 102). Worth confirming before
 committing to those platforms.
 
-## decision point
+## decision point (resolved: option 2)
 
 The shell half of the plan is proven; the blocker is that webview/webview's
 Linux engine (WebKitGTK is its only Linux backend) has no OPFS and no
-near-term sign of one. Options:
+near-term sign of one. Options considered:
 
-1. **hybrid (current recommendation)**: keep the Zig shell as the single
-   entry point on all platforms. On macOS/Windows open the webview window;
-   on Linux the same shell serves the app and launches the system Chromium
-   in `--app` mode (chromium is already in the devshell; `--user-data-dir`
-   keeps the profile private). Minimalist, works today, no bundling. Cost:
-   the Linux window is Chromium's, and system chromium becomes a runtime
-   dependency there.
-2. **webview-only, Linux later**: ship macOS/Windows now, keep the spike
-   as a canary (`zig build run` in `desktop/`) and add Linux for free when
-   WebKitGTK gains OPFS. Fine if Linux desktop can wait.
+1. **hybrid**: zig shell everywhere; on Linux launch system Chromium in
+   `--app` mode.
+2. **webview-only, Linux later** — **chosen**: ship macOS/Windows now,
+   keep the spike as a canary (`zig build run-spike` in `desktop/`) and
+   add Linux for free if WebKitGTK ever gains OPFS.
 3. **Electron**: OPFS everywhere via bundled Chromium, but ~100MB+ of
    runtime and a Node toolchain — against this repo's grain.
 4. **stay a PWA**: no packaging; desktop users install from the browser.
 
-## remaining phases (contingent on the decision above)
+## phase 1 — real shell (done)
 
-- **phase 1 — real shell**: embed `app/build/` at compile time (build.zig
-  walks the tree and generates an embed map), serve it (`.pmtiles` must be
-  `application/octet-stream` with working Range requests — same trap
-  Capacitor hit, see `BUGS.md` bug 3; SPA fallback to `200.html`), `-dev`
-  flag pointing at vite's `localhost:5173`.
-- **phase 2 — repo integration**: `scripts/build-desktop.sh`
-  (`npm run build` in `app/` → `zig build`), README section, flake updates.
+`desktop/src/main.zig` serves the app build embedded at compile time
+(`build.zig` walks `app/build/` and generates a path → bytes table of
+`@embedFile` entries, imported as `web`) and opens a webview window on it:
+
+- verified: index + assets serve with correct content types; SPA routes
+  fall back to `200.html`; `.pmtiles` served as `application/octet-stream`,
+  never compressed
+- verified byte-exact against the files on disk: full-body GET, explicit
+  `Range: bytes=a-b`, open-end `bytes=a-`, and suffix `bytes=-n` ranges
+  (206 + correct `Content-Range`); unsatisfiable ranges get 416 with
+  `Content-Range: bytes */size` — this is the trap Capacitor's local server
+  fell into (`BUGS.md` bug 3), pmtiles depends on it
+- `-dev [url]` points the window at a dev server (defaults to vite's
+  `http://localhost:5173`) and skips the local server
+- one caveat found and documented in `build.zig`: the webview header must
+  be compiled with `-DWEBVIEW_STATIC`, and on Linux the shim is compiled by
+  the host `c++` with the host's `libstdc++`/`libgcc_s` linked directly
+  (zig maps `-lstdc++` to its ABI-incompatible bundled libc++)
+
+The webview window itself was exercised under Xvfb: page loads, JS runs.
+On Linux it fails at database open ("Missing required OPFS APIs" — the
+phase-0 finding, expected); macOS/Windows verification on real hardware is
+still outstanding.
+
+## phase 2 — repo integration (done)
+
+- `scripts/build-desktop.sh`: `npm run build` in `app/`, then
+  `zig build -Doptimize=ReleaseSafe` in `desktop/` →
+  `desktop/zig-out/bin/dayzero-desktop`
+- `flake.nix`: `pkg-config`, `gtk3`, `webkitgtk_4_1` added to the devshell
+- README sections (`README.md`, `desktop/README.md`, `scripts/README.md`)
+
+## remaining phases
+
 - **phase 3 — webview gaps**: backup export (`<a download>` likely no-ops
-  in webviews → `webview_bind`'d Zig function writing to a chosen path,
-  same fix pattern as Android's `@capacitor/filesystem`); confirm the app
-  tolerates missing service workers (WebKitGTK has none; harmless for a
-  local-first app but verify).
+  at least in WKWebView — webview/webview installs no download handler →
+  `webview_bind`'d Zig function writing to a chosen path, same fix pattern
+  as Android's `@capacitor/filesystem`); confirm the app tolerates missing
+  service workers (harmless for a local-first app but verify). Requires
+  macOS/Windows hardware.
+- **macOS/Windows verification**: the window + storage + sync round-trip on
+  real hardware (WKWebView has OPFS since Safari 16.4-era WebKit; WebView2
+  is Chromium, OPFS since 102 — both high-confidence but untested here).
 - packaging (icons, `.dmg`/`.msi`/`.deb`) is deliberately out of scope —
   webview/webview ships raw binaries by design.

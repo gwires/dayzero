@@ -10,6 +10,10 @@ and sync between devices later — the app works fully offline.
 - **`server/`** — a Zig sync server (single static binary, SQLite storage).
   It only ever stores opaque CRDT update blobs; it never needs to understand
   the entry format.
+- **`desktop/`** — a Zig desktop shell: embeds the static app build and opens
+  it in a native window via [webview/webview](https://github.com/webview/webview)
+  (see [`docs/DESKTOP-PLAN.md`](./docs/DESKTOP-PLAN.md)). Supported on macOS
+  and Windows; Linux is blocked until WebKitGTK gains OPFS.
 
 See [`PLAN.md`](./PLAN.md) for the full architecture and roadmap.
 
@@ -30,6 +34,11 @@ Milestone 11 (multiple diaries) is done — entries can be grouped into named,
 syncing diaries, scoped from a nav switcher, with a settings section to
 manage them. See [`PLAN.md`](./PLAN.md) for the full milestone list and
 architecture.
+
+The desktop shell (`desktop/`) is built and serving the embedded app build
+with byte-exact range support; macOS/Windows are supported, Linux is blocked
+on WebKitGTK's missing OPFS (see [`docs/DESKTOP-PLAN.md`](./docs/DESKTOP-PLAN.md),
+including the phase-0 spike kept as a canary under `desktop/spike/`).
 
 ## Prerequisites
 
@@ -111,6 +120,20 @@ vendored and compiled in rather than linked against the system library.
 zig build          # build zig-out/bin/dayzero-server without running it
 ```
 
+## Desktop (`desktop/`)
+
+```sh
+nix develop -c scripts/build-desktop.sh   # builds app/, then the desktop binary
+desktop/zig-out/bin/dayzero-desktop       # run it
+```
+
+The shell embeds `app/build/` at compile time (single self-contained
+binary), serves it on an ephemeral `127.0.0.1` port — a secure context,
+which OPFS requires — and opens a webview window on it. `-dev` points the
+window at vite's dev server instead. See `desktop/README.md` and
+[`docs/DESKTOP-PLAN.md`](./docs/DESKTOP-PLAN.md); the devshell additions
+for it are `pkg-config`, `gtk3`, and `webkitgtk_4_1`.
+
 ## Repo layout
 
 ```
@@ -120,7 +143,7 @@ dayzero/
   BUGS.md                          # known mobile/APK bugs and their status
   APK-PLAN.md                      # Capacitor packaging plan (milestone 10)
   docs/protocol.md                 # sync wire protocol, kept in lockstep with client + server
-  scripts/                         # build-basemap.sh, build-glyphs.sh (offline map assets), invite-user.sh (per-user sync token)
+  scripts/                         # build-basemap.sh, build-glyphs.sh (offline map assets), build-apk.sh, build-desktop.sh, invite-user.sh (per-user sync token)
   tools/                           # deno: generate/import/verify realistic test data — see tools/README.md
   app/
     src/lib/db/       # sqlite-wasm worker, migrations, typed rpc
@@ -130,6 +153,10 @@ dayzero/
     src/lib/ui/        # shared UI components (EntryEditor, MapView, ...)
     src/routes/        # list, new/edit entry, search, tags, calendar, photos, map, settings
     android/           # Capacitor Android project (milestone 10)
+  desktop/
+    src/main.zig      # embedded-build http server + webview window
+    lib/webview/      # vendored webview/webview 0.12.0 (MIT)
+    spike/            # OPFS canary test page (phase-0 spike, see DESKTOP-PLAN.md)
   server/
     src/main.zig  src/config.zig  src/db.zig  src/api.zig  src/tenants.zig
 ```

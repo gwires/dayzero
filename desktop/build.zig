@@ -1,19 +1,64 @@
 const std = @import("std");
 
-pub fn build(b: *std.Build) void {
+pub fn build(b: *std.Build) !void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
+    // --- dayzero-desktop: the app build embedded into a webview shell ---
     const exe_mod = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
         .optimize = optimize,
     });
     exe_mod.link_libc = true;
+    try addWebEmbed(b, exe_mod);
+    try addWebview(b, exe_mod, target);
 
-    // webview/webview 0.12.0 (vendored under lib/webview, MIT license).
-    // The library is a single C++ header; the shim is the one translation
-    // unit that compiles it and exports the C API.
+    const exe = b.addExecutable(.{
+        .name = "dayzero-desktop",
+        .root_module = exe_mod,
+    });
+    b.installArtifact(exe);
+
+    const run_cmd = b.addRunArtifact(exe);
+    run_cmd.step.dependOn(b.getInstallStep());
+    if (b.args) |args| {
+        run_cmd.addArgs(args);
+    }
+    const run_step = b.step("run", "Run dayzero desktop");
+    run_step.dependOn(&run_cmd.step);
+
+    // --- dayzero-desktop-spike: OPFS canary for WebKitGTK (see README) ---
+    const spike_mod = b.createModule(.{
+        .root_source_file = b.path("src/spike.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    spike_mod.link_libc = true;
+    try addWebview(b, spike_mod, target);
+
+    const spike_exe = b.addExecutable(.{
+        .name = "dayzero-desktop-spike",
+        .root_module = spike_mod,
+    });
+    const spike_install = b.addInstallArtifact(spike_exe, .{});
+
+    const spike_step = b.step("spike", "Build the OPFS canary spike");
+    spike_step.dependOn(&spike_install.step);
+
+    const spike_run = b.addRunArtifact(spike_exe);
+    spike_run.step.dependOn(&spike_install.step);
+    if (b.args) |args| {
+        spike_run.addArgs(args);
+    }
+    const spike_run_step = b.step("run-spike", "Run the OPFS canary spike");
+    spike_run_step.dependOn(&spike_run.step);
+}
+
+/// webview/webview 0.12.0 (vendored under lib/webview, MIT license).
+/// The library is a single C++ header; the shim is the one translation
+/// unit that compiles it and exports the C API.
+fn addWebview(b: *std.Build, exe_mod: *std.Build.Module, target: std.Build.ResolvedTarget) !void {
     switch (target.result.os.tag) {
         .linux => {
             // zig's bundled clang doesn't find the system C++ standard
@@ -57,23 +102,89 @@ pub fn build(b: *std.Build) void {
             });
             exe_mod.linkFramework("WebKit", .{});
         },
-        else => {},
+        .windows => {
+            // Native Windows builds only (no cross-compiling the GTK bits
+            // from here anyway); webview.h's built-in WebView2 loader needs
+            // no external DLL beyond the OS ones listed here. Untested.
+            exe_mod.addIncludePath(b.path("lib/webview"));
+            exe_mod.addCSourceFile(.{
+                .file = b.path("src/webview_shim.cpp"),
+                .flags = &.{ "-std=c++17", "-DWEBVIEW_STATIC" },
+            });
+            for ([_][]const u8{ "user32", "ole32", "shell32", "shlwapi", "gdi32" }) |lib| {
+                exe_mod.linkSystemLibrary(lib, .{});
+            }
+        },
+        else => @panic("unsupported target: webview has no backend for this OS"),
+    }
+}
+
+/// Embeds the static app build (app/build/) into the module as `web`:
+/// a generated embed.zig holding a path -> bytes table. Run `npm run build`
+/// in app/ first (or use scripts/build-desktop.sh).
+fn addWebEmbed(b: *std.Build, exe_mod: *std.Build.Module) !void {
+    const app_dir = findAppBuildDir() orelse {
+        std.log.err("app/build not found: run `npm run build` in app/ first (or use scripts/build-desktop.sh)", .{});
+        return error.AppBuildMissing;
+    };
+
+    var dir = try std.fs.cwd().openDir(app_dir, .{ .iterate = true });
+    defer dir.close();
+
+    const wf = b.addWriteFiles();
+    var paths = std.ArrayList([]const u8).init(b.allocator);
+
+    var walker = try dir.walk(b.allocator);
+    defer walker.deinit();
+    while (try walker.next()) |entry| {
+        if (entry.kind != .file) continue;
+        const rel = try b.allocator.dupe(u8, entry.path);
+        try paths.append(rel);
+        const src_path = try std.fs.path.join(b.allocator, &.{ app_dir, entry.path });
+        const dest_path = try std.fs.path.join(b.allocator, &.{ "web", entry.path });
+        _ = wf.addCopyFile(.{ .cwd_relative = src_path }, dest_path);
     }
 
-    const exe = b.addExecutable(.{
-        .name = "dayzero-desktop-spike",
-        .root_module = exe_mod,
+    if (paths.items.len == 0) {
+        std.log.err("app/build is empty: run `npm run build` in app/ first", .{});
+        return error.AppBuildMissing;
+    }
+    std.mem.sort([]const u8, paths.items, {}, pathLessThan);
+
+    var src = std.ArrayList(u8).init(b.allocator);
+    try src.appendSlice(
+        \\// Generated by desktop/build.zig from app/build — do not edit.
+        \\pub const File = struct { path: []const u8, data: []const u8 };
+        \\pub const files = [_]File{
+        \\
+    );
+    for (paths.items) |p| {
+        try src.writer().print(
+            "    .{{ .path = \"{s}\", .data = @embedFile(\"{s}\") }},\n",
+            .{ p, p },
+        );
+    }
+    try src.appendSlice("};\n");
+
+    // embed.zig sits next to the copied files so @embedFile's relative
+    // paths resolve against the same directory.
+    const web_module = b.createModule(.{
+        .root_source_file = wf.add("web/embed.zig", src.items),
     });
-    b.installArtifact(exe);
+    exe_mod.addImport("web", web_module);
+}
 
-    const run_cmd = b.addRunArtifact(exe);
-    run_cmd.step.dependOn(b.getInstallStep());
-    if (b.args) |args| {
-        run_cmd.addArgs(args);
+fn pathLessThan(_: void, a: []const u8, cmp_b: []const u8) bool {
+    return std.mem.order(u8, a, cmp_b) == .lt;
+}
+
+/// zig build is invoked from desktop/, but accept the repo root too.
+fn findAppBuildDir() ?[]const u8 {
+    for ([_][]const u8{ "../app/build", "app/build" }) |candidate| {
+        std.fs.cwd().access(candidate, .{}) catch continue;
+        return candidate;
     }
-
-    const run_step = b.step("run", "Run the desktop spike");
-    run_step.dependOn(&run_cmd.step);
+    return null;
 }
 
 /// `pkg-config --cflags gtk+-3.0 webkit2gtk-4.1`, tokenized. On systems

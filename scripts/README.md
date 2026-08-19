@@ -15,6 +15,27 @@ sideload it to test on-device. Requires `node`, the Android SDK, and
 JDK 21, all provided by the nix devshell (`flake.nix`); `app/node_modules`
 must already be installed (`npm install` in `app/`, first time only).
 
+## build-desktop.sh
+
+Builds the dayzero desktop binary: production web build, then the Zig
+shell in `desktop/` with that build embedded — a single self-contained
+binary that serves the app over `http://127.0.0.1` (a secure context, as
+OPFS requires) inside a native webview window. See `docs/DESKTOP-PLAN.md`
+for architecture and platform status (notably: WebKitGTK has no OPFS, so
+macOS/Windows are the supported targets for now).
+
+```sh
+nix develop -c scripts/build-desktop.sh
+```
+
+Output lands at `desktop/zig-out/bin/dayzero-desktop`. Requires `node`,
+`zig`, `pkg-config`, `gtk3`, and `webkitgtk_4_1` — all provided by the nix
+devshell (`flake.nix`); `app/node_modules` must already be installed
+(`npm install` in `app/`, first time only). For iteration during
+development, `desktop/zig-out/bin/dayzero-desktop -dev` points the window
+at vite's dev server (`npm run dev` in `app/`) instead of the embedded
+build.
+
 ## build-basemap.sh
 
 Rebuilds `app/static/basemap.pmtiles`, the offline vector basemap bundled
