@@ -73,6 +73,26 @@
       {
         devShells.default = pkgs.mkShell {
           packages = [
+            pkgs.zig_0_14
+            pkgs.zls_0_14
+            pkgs.nodejs_22
+            pkgs.deno
+            pkgs.sqlite
+            pkgs.tippecanoe
+            pkgs.pmtiles
+            pkgs.unzip
+            pkgs.dejavu_fonts
+            pkgs.openssl
+            pkgs.playwright
+            androidSdk
+            pkgs.jdk21
+          ]
+          # Everything below only exists on Linux: chromium + the X11/
+          # wayland libraries it needs at runtime (Playwright e2e), and
+          # GTK3/WebKitGTK for the desktop shell. On macOS the desktop
+          # build links the system WebKit framework directly, so the
+          # common packages above are all a macOS host needs.
+          ++ pkgs.lib.optionals pkgs.stdenv.isLinux [
             pkgs.chromium
             pkgs.xvfb
             pkgs.at-spi2-atk
@@ -98,24 +118,10 @@
             pkgs.libxrandr
             pkgs.libxshmfence
 
-            pkgs.zig_0_14
-            pkgs.zls_0_14
-            pkgs.nodejs_22
-
-            # desktop shell (spike): webview links against GTK3 + WebKitGTK
+            # desktop shell: webview links against GTK3 + WebKitGTK
             pkgs.pkg-config
             pkgs.gtk3
             pkgs.webkitgtk_4_1
-            pkgs.deno
-            pkgs.sqlite
-            pkgs.tippecanoe
-            pkgs.pmtiles
-            pkgs.unzip
-            pkgs.dejavu_fonts
-            pkgs.openssl
-            pkgs.playwright
-            androidSdk
-            pkgs.jdk21
           ];
 
           shellHook = ''
