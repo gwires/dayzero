@@ -1,0 +1,14 @@
+.{
+    .name = .desktop,
+    .version = "0.0.0",
+    .fingerprint = 0x96105a4fc2be2a3,
+    .minimum_zig_version = "0.14.1",
+    .dependencies = .{},
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "lib",
+        "spike",
+    },
+}

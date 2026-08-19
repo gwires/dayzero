@@ -1,0 +1,70 @@
+<!doctype html>
+<html>
+	<head>
+		<meta charset="utf-8" />
+		<title>dayzero desktop spike</title>
+		<style>
+			body {
+				font-family: monospace;
+				background: #111;
+				color: #eee;
+				padding: 1rem;
+			}
+			.ok {
+				color: #44ff44;
+			}
+			.fail {
+				color: #ff4444;
+			}
+			.pending {
+				color: #888;
+			}
+		</style>
+	</head>
+	<body>
+		<h1>dayzero desktop spike — OPFS SAH pool</h1>
+		<div id="log"></div>
+		<script type="module">
+			const log = document.getElementById('log');
+			const add = (msg, cls = 'pending') => {
+				const p = document.createElement('p');
+				p.className = cls;
+				p.textContent = msg;
+				log.appendChild(p);
+			};
+			// Report back to the host process so results are visible without a
+			// browser (e.g. when running headless under Xvfb).
+			const report = (msg) => fetch('/log', { method: 'POST', body: msg }).catch(() => {});
+
+			add(`user agent: ${navigator.userAgent}`);
+			report(`user agent: ${navigator.userAgent}`);
+			add(`isSecureContext: ${window.isSecureContext}`);
+			report(`isSecureContext: ${window.isSecureContext}`);
+			add(`navigator.storage: ${!!navigator.storage}, getDirectory: ${typeof navigator.storage?.getDirectory}`);
+			report(`navigator.storage: ${!!navigator.storage}, getDirectory: ${typeof navigator.storage?.getDirectory}`);
+
+			if (!navigator.storage?.getDirectory) {
+				add('FAIL: navigator.storage.getDirectory unavailable (no OPFS)', 'fail');
+				report('FAIL: navigator.storage.getDirectory unavailable (no OPFS)');
+			} else {
+				add('ok: navigator.storage.getDirectory available', 'ok');
+				report('ok: navigator.storage.getDirectory available');
+			}
+
+			// Exercise exactly what app/src/lib/db/worker.ts does: initialize
+			// sqlite-wasm in a dedicated worker, install the OPFS SAH pool VFS,
+			// and run a write/read round-trip.
+			const worker = new Worker('./db-worker.mjs', { type: 'module' });
+			worker.onmessage = (e) => {
+				const { step, ok, detail } = e.data;
+				const line = `${ok ? 'ok' : 'FAIL'}: ${step}${detail ? ` — ${detail}` : ''}`;
+				add(line, ok ? 'ok' : 'fail');
+				report(line);
+			};
+			worker.onerror = (e) => {
+				add(`FAIL: worker error — ${e.message}`, 'fail');
+				report(`FAIL: worker error — ${e.message}`);
+			};
+		</script>
+	</body>
+</html>

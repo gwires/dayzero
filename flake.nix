@@ -101,6 +101,11 @@
             pkgs.zig_0_14
             pkgs.zls_0_14
             pkgs.nodejs_22
+
+            # desktop shell (spike): webview links against GTK3 + WebKitGTK
+            pkgs.pkg-config
+            pkgs.gtk3
+            pkgs.webkitgtk_4_1
             pkgs.deno
             pkgs.sqlite
             pkgs.tippecanoe

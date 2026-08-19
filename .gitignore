@@ -5,6 +5,11 @@ result-*
 # zig
 server/.zig-cache/
 server/zig-out/
+desktop/.zig-cache/
+desktop/zig-out/
+
+# desktop spike: sqlite-wasm runtime copies (see desktop/spike/fetch-sqlite.sh)
+desktop/spike/www/sqlite/
 
 # local sqlite db files
 *.sqlite
