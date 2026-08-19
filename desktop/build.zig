@@ -121,21 +121,14 @@ fn addWebview(b: *std.Build, exe_mod: *std.Build.Module, target: std.Build.Resol
             // the bundled headers only fill the pruned stub's gap.
             try flags.append("-idirafter");
             try flags.append(try b.graph.zig_lib_directory.join(b.allocator, &.{ "libcxx", "include" }));
-            exe_mod.addCSourceFile(.{
-                .file = b.path("src/webview_shim.cpp"),
-                .flags = flags.items,
-            });
+            exe_mod.addCSourceFile(.{ .file = b.path("src/webview_shim.mm"), .flags = flags.items });
             exe_mod.linkFramework("WebKit", .{});
         },
         .windows => {
-            // Native Windows builds only (no cross-compiling the GTK bits
-            // from here anyway); webview.h's built-in WebView2 loader needs
-            // no external DLL beyond the OS ones listed here. Untested.
+            // Native Windows builds only; webview.h's built-in WebView2
+            // loader needs no external DLL beyond the OS ones listed here.
             exe_mod.addIncludePath(b.path("lib/webview"));
-            exe_mod.addCSourceFile(.{
-                .file = b.path("src/webview_shim.cpp"),
-                .flags = &.{ "-std=c++17", "-DWEBVIEW_STATIC" },
-            });
+            exe_mod.addCSourceFile(.{ .file = b.path("src/webview_shim.cpp"), .flags = &.{ "-std=c++17", "-DWEBVIEW_STATIC" } });
             for ([_][]const u8{ "user32", "ole32", "shell32", "shlwapi", "gdi32" }) |lib| {
                 exe_mod.linkSystemLibrary(lib, .{});
             }
