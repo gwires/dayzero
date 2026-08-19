@@ -105,7 +105,20 @@ fn addWebview(b: *std.Build, exe_mod: *std.Build.Module, target: std.Build.Resol
             exe_mod.addIncludePath(b.path("lib/webview"));
             var flags = std.ArrayList([]const u8).init(b.allocator);
             try flags.appendSlice(&.{ "-std=c++17", "-DWEBVIEW_STATIC", "-isysroot", sdk });
-            exe_mod.addCSourceFile(.{ .file = b.path("src/webview_shim.cpp"), .flags = flags.items });
+            // webview.h's Cocoa backend is written against the ObjC runtime,
+            // and the macOS SDK's CF_ENUM macro expansion (enum X : T X;)
+            // only parses in Objective-C++ mode: in plain C++ mode zig's
+            // clang rejects it ("non-defining declaration of enumeration with
+            // a fixed underlying type is only permitted as a standalone
+            // declaration"). Force ObjC++ regardless of the .cpp extension.
+            exe_mod.addCSourceFile(.{
+                .file = b.path("src/webview_shim.cpp"),
+                .flags = flags.items,
+                .language = .objective_cpp,
+            });
+            // Apple's clang driver implicitly adds -lobjc for ObjC++ links;
+            // zig's does not, so wire it up explicitly.
+            exe_mod.linkSystemLibrary("objc", .{});
             exe_mod.linkFramework("WebKit", .{});
             exe_mod.linkFramework("Foundation", .{});
         },
