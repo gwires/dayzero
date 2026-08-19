@@ -94,39 +94,40 @@ fn addWebview(b: *std.Build, exe_mod: *std.Build.Module, target: std.Build.Resol
             }
         },
         .macos => {
-            // zig resolves the SDK by running xcrun, which fails inside
-            // nix develop, so find the SDK ourselves and pass it
-            // explicitly. Note that --sysroot alone is not enough: the
-            // MachO linker's framework search only honors -F directories.
-            // Two kinds of SDKs are accepted: a complete one (Command
-            // Line Tools / Xcode), or nixpkgs' pruned apple-sdk stub
-            // that nix-darwin devshells export as SDKROOT — the stub has
-            // no C++ standard library headers, so zig's bundled libc++
-            // is appended as an -idirafter fallback below.
+            // Resolve the SDK ourselves: zig's xcrun-based detection
+            // fails inside nix develop. Accept a complete SDK (CLT / Xcode)
+            // or fall back to the nix-store stub. Note that --sysroot alone
+            // is not enough: the MachO linker's framework search only honors
+            // -F directories.
             const sdk = findMacosSdk(b) orelse @panic(
                 "no macOS SDK found: set SDKROOT, or install the Command Line Tools (xcode-select --install)",
             );
             b.sysroot = sdk;
-            exe_mod.addFrameworkPath(.{ .cwd_relative = try std.fs.path.join(b.allocator, &.{ sdk, "System", "Library", "Frameworks" }) });
-            // the shim is compiled by zig's own clang here, so zig's
-            // libc++ choice is ABI-correct; on Linux the host compiler
-            // owns the ABI and this must stay unset (see that branch).
-            exe_mod.link_libcpp = true;
 
-            exe_mod.addIncludePath(b.path("lib/webview"));
-            var flags = std.ArrayList([]const u8).init(b.allocator);
-            try flags.appendSlice(&.{ "-std=c++17", "-DWEBVIEW_STATIC", "-isysroot", sdk });
-            // zig ships libc++'s headers for cross-compilation; searched
-            // last (-idirafter), so a complete SDK's own c++/v1 wins and
-            // the bundled headers only fill the pruned stub's gap.
-            try flags.append("-idirafter");
-            try flags.append(try b.graph.zig_lib_directory.join(b.allocator, &.{ "libcxx", "include" }));
-            exe_mod.addCSourceFile(.{ .file = b.path("src/webview_shim.mm"), .flags = flags.items });
-            // clang does not auto-link frameworks when driven via zig,
-            // so these must be wired up explicitly.  WebKit is the
-            // windowing surface; Foundation covers ObjC runtime,
-            // CoreFoundation, dispatch (libdispatch), and all the stdlib
-            // symbols (malloc/free/assert etc.) that the shim needs.
+            // Compile the shim with the HOST c++ (clang with ObjC support).
+            // This avoids zig's internal darwin linker quirks where -lc /
+            // -framework Foundation don't resolve system symbols correctly.
+            // Host-compiled objects are then linked by zig alongside main.zig.
+            const shim = b.addSystemCommand(&.{ "c++" });
+            shim.addArgs(&.{ "-std=c++17", "-fPIC", "-DWEBVIEW_STATIC" });
+            shim.addArg("-isysroot");
+            shim.addArg(sdk);
+            shim.addArg("-F");
+            shim.addArg(try std.fs.path.join(b.allocator, &.{
+                sdk,
+                "System",
+                "Library",
+                "Frameworks",
+            }));
+            shim.addArg("-I");
+            shim.addArg(b.path("lib/webview").getPath(b));
+            shim.addFileArg(.{ .cwd_relative = "src/webview_shim.mm" });
+            shim.addArg("-o");
+            exe_mod.addObjectFile(shim.addOutputFileArg("webview_shim.o"));
+
+            // Link-time frameworks (the host-compiled shim's unresolved symbols
+            // must be satisfied at link time; zig's native darwin handling
+            // requires explicit wiring since it won't auto-link them).
             exe_mod.linkFramework("WebKit", .{});
             exe_mod.linkFramework("Foundation", .{});
         },
