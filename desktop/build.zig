@@ -94,40 +94,18 @@ fn addWebview(b: *std.Build, exe_mod: *std.Build.Module, target: std.Build.Resol
             }
         },
         .macos => {
-            // Resolve the SDK ourselves: zig's xcrun-based detection
-            // fails inside nix develop. Accept a complete SDK (CLT / Xcode)
-            // or fall back to the nix-store stub. Note that --sysroot alone
-            // is not enough: the MachO linker's framework search only honors
-            // -F directories.
             const sdk = findMacosSdk(b) orelse @panic(
                 "no macOS SDK found: set SDKROOT, or install the Command Line Tools (xcode-select --install)",
             );
             b.sysroot = sdk;
-
-            // Compile the shim with the HOST c++ (clang with ObjC support).
-            // This avoids zig's internal darwin linker quirks where -lc /
-            // -framework Foundation don't resolve system symbols correctly.
-            // Host-compiled objects are then linked by zig alongside main.zig.
-            const shim = b.addSystemCommand(&.{ "c++" });
-            shim.addArgs(&.{ "-std=c++17", "-fPIC", "-DWEBVIEW_STATIC" });
-            shim.addArg("-isysroot");
-            shim.addArg(sdk);
-            shim.addArg("-F");
-            shim.addArg(try std.fs.path.join(b.allocator, &.{
-                sdk,
-                "System",
-                "Library",
-                "Frameworks",
-            }));
-            shim.addArg("-I");
-            shim.addArg(b.path("lib/webview").getPath(b));
-            shim.addFileArg(.{ .cwd_relative = "src/webview_shim.mm" });
-            shim.addArg("-o");
-            exe_mod.addObjectFile(shim.addOutputFileArg("webview_shim.o"));
-
-            // Link-time frameworks (the host-compiled shim's unresolved symbols
-            // must be satisfied at link time; zig's native darwin handling
-            // requires explicit wiring since it won't auto-link them).
+            exe_mod.addFrameworkPath(.{ .cwd_relative = try std.fs.path.join(b.allocator, &.{
+                sdk, "System", "Library", "Frameworks",
+            }) });
+            exe_mod.link_libcpp = true;
+            exe_mod.addIncludePath(b.path("lib/webview"));
+            var flags = std.ArrayList([]const u8).init(b.allocator);
+            try flags.appendSlice(&.{ "-std=c++17", "-DWEBVIEW_STATIC", "-isysroot", sdk });
+            exe_mod.addCSourceFile(.{ .file = b.path("src/webview_shim.cpp"), .flags = flags.items });
             exe_mod.linkFramework("WebKit", .{});
             exe_mod.linkFramework("Foundation", .{});
         },
