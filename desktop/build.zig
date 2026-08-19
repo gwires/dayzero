@@ -97,11 +97,16 @@ fn addWebview(b: *std.Build, exe_mod: *std.Build.Module, target: std.Build.Resol
             // zig resolves frameworks via the SDK path it detects by
             // running xcrun, which fails inside nix develop ("unable to
             // find framework 'WebKit'. searched paths: none"), so find
-            // the SDK ourselves and pass it explicitly.
+            // the SDK ourselves and pass it explicitly. Note that
+            // --sysroot alone is not enough: the MachO linker's
+            // framework search only honors -F directories, and the
+            // devshell's SDKROOT points at nixpkgs' trimmed apple-sdk
+            // stub, which doesn't contain WebKit in the first place.
             const sdk = findMacosSdk(b) orelse @panic(
                 "no macOS SDK found: set SDKROOT, or install the Command Line Tools (xcode-select --install)",
             );
             b.sysroot = sdk;
+            exe_mod.addFrameworkPath(.{ .cwd_relative = try std.fs.path.join(b.allocator, &.{ sdk, "System", "Library", "Frameworks" }) });
 
             exe_mod.addIncludePath(b.path("lib/webview"));
             const flags = [_][]const u8{ "-std=c++17", "-DWEBVIEW_STATIC", "-isysroot", sdk };
@@ -192,8 +197,13 @@ fn pathLessThan(_: void, a: []const u8, cmp_b: []const u8) bool {
 /// driver does, because zig's own detection only tries xcrun and silently
 /// gives up inside nix develop shells.
 fn findMacosSdk(b: *std.Build) ?[]const u8 {
+    // Honor SDKROOT unless it points into the nix store: there it refers
+    // to nixpkgs' trimmed apple-sdk stub, which lacks the WebKit
+    // framework the webview links against.
     if (std.posix.getenv("SDKROOT")) |env| {
-        if (env.len > 0) return b.dupe(env);
+        if (env.len > 0 and !std.mem.startsWith(u8, env, "/nix/store/")) {
+            return b.dupe(env);
+        }
     }
     if (run(b, &.{ "xcrun", "--show-sdk-path" })) |out| {
         const path = std.mem.trim(u8, out, " \t\r\n");

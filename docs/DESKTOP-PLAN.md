@@ -97,11 +97,13 @@ near-term sign of one. Options considered:
 - second caveat (found on a real Mac): zig resolves the WebKit framework
   via an SDK path it detects by running `xcrun`, which fails inside
   `nix develop` ("unable to find framework 'WebKit'. searched paths:
-  none"). `build.zig` now finds the SDK itself — `SDKROOT` env, then
-  `xcrun --show-sdk-path`, then the well-known Command Line Tools / Xcode
-  directories — and passes it as both `b.sysroot` (`--sysroot`, which
-  feeds the MachO linker's framework search) and `-isysroot` for the shim
-  compilation
+  none"). `build.zig` now finds the SDK itself — `SDKROOT` env (unless
+  it points into `/nix/store`: there it refers to nixpkgs' trimmed
+  apple-sdk stub, which has no WebKit), then `xcrun --show-sdk-path`,
+  then the well-known Command Line Tools / Xcode directories — and wires
+  it up explicitly: `-F <sdk>/System/Library/Frameworks` for the MachO
+  linker's framework search (which ignores `--sysroot`), `-isysroot` for
+  the shim compilation, and `b.sysroot` for good measure
 
 The webview window itself was exercised under Xvfb: page loads, JS runs.
 On Linux it fails at database open ("Missing required OPFS APIs" — the
