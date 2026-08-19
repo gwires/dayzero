@@ -1,5 +1,23 @@
 # scripts
 
+## build-all.sh
+
+Builds everything dayzero ships from a fresh checkout, on macOS or Linux:
+the web app (`app/build/`), the Android APK, the sync server binary, and
+the desktop binary. Everything it needs comes from the nix devshell; it
+fails fast with a clear message if run outside of it.
+
+```sh
+nix develop -c scripts/build-all.sh
+```
+
+The web app is built once (`npm ci` + `npm run build`); the APK and
+desktop steps are then run via `build-apk.sh` and `build-desktop.sh` with
+`DAYZERO_SKIP_WEB_BUILD=1` so they reuse that build instead of rebuilding
+it. Outputs: `app/build/`,
+`app/android/app/build/outputs/apk/debug/app-debug.apk`,
+`server/zig-out/bin/dayzero-server`, `desktop/zig-out/bin/dayzero-desktop`.
+
 ## build-apk.sh
 
 Builds a debug Android APK: production web build, `npx cap sync android`,
@@ -13,7 +31,9 @@ nix develop -c scripts/build-apk.sh
 Output lands at `app/android/app/build/outputs/apk/debug/app-debug.apk` —
 sideload it to test on-device. Requires `node`, the Android SDK, and
 JDK 21, all provided by the nix devshell (`flake.nix`); `app/node_modules`
-must already be installed (`npm install` in `app/`, first time only).
+must already be installed (`npm install` in `app/`, first time only). Set
+`DAYZERO_SKIP_WEB_BUILD=1` to skip the web build when `app/build/` is
+already up to date (as `build-all.sh` does).
 
 ## build-desktop.sh
 
@@ -31,7 +51,9 @@ nix develop -c scripts/build-desktop.sh
 Output lands at `desktop/zig-out/bin/dayzero-desktop`. Requires `node`,
 `zig`, `pkg-config`, `gtk3`, and `webkitgtk_4_1` — all provided by the nix
 devshell (`flake.nix`); `app/node_modules` must already be installed
-(`npm install` in `app/`, first time only). For iteration during
+(`npm install` in `app/`, first time only). Set `DAYZERO_SKIP_WEB_BUILD=1`
+to skip the web build when `app/build/` is already up to date (as
+`build-all.sh` does). For iteration during
 development, `desktop/zig-out/bin/dayzero-desktop -dev` points the window
 at vite's dev server (`npm run dev` in `app/`) instead of the embedded
 build.

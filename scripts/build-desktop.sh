@@ -6,14 +6,20 @@
 # shell looking for an engine — macOS/Windows are the supported targets).
 # Run from the nix devshell (needs node, zig, pkg-config, gtk3,
 # webkitgtk_4_1 — all provided by flake.nix).
+#
+# Set DAYZERO_SKIP_WEB_BUILD=1 to skip the web build when app/build/ is
+# already up to date (scripts/build-all.sh does this to avoid building the
+# web app twice).
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 app_dir="$repo_root/app"
 bin="$repo_root/desktop/zig-out/bin/dayzero-desktop"
 
-echo "==> building web assets"
-(cd "$app_dir" && npm run build)
+if [ "${DAYZERO_SKIP_WEB_BUILD:-}" != 1 ]; then
+  echo "==> building web assets"
+  (cd "$app_dir" && npm run build)
+fi
 
 echo "==> building the desktop shell (embeds app/build)"
 (cd "$repo_root/desktop" && zig build -Doptimize=ReleaseSafe)

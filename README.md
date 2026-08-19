@@ -65,6 +65,13 @@ Everything below assumes you're inside the dev shell (either via `nix
 develop` or direnv). If you'd rather not enter a shell, prefix any command
 with `nix develop -c <command>`.
 
+To build everything — web app, Android APK, sync server, and desktop app —
+from a fresh checkout (macOS or Linux):
+
+```sh
+scripts/build-all.sh
+```
+
 ## App (`app/`)
 
 ```sh
@@ -143,7 +150,7 @@ dayzero/
   BUGS.md                          # known mobile/APK bugs and their status
   APK-PLAN.md                      # Capacitor packaging plan (milestone 10)
   docs/protocol.md                 # sync wire protocol, kept in lockstep with client + server
-  scripts/                         # build-basemap.sh, build-glyphs.sh (offline map assets), build-apk.sh, build-desktop.sh, invite-user.sh (per-user sync token)
+  scripts/                         # build-all.sh (everything), build-apk.sh, build-desktop.sh, build-basemap.sh, build-glyphs.sh (offline map assets), invite-user.sh (per-user sync token)
   tools/                           # deno: generate/import/verify realistic test data — see tools/README.md
   app/
     src/lib/db/       # sqlite-wasm worker, migrations, typed rpc
