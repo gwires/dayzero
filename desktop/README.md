@@ -60,9 +60,12 @@ since the embed step locates `app/build` relative to the working directory.
   nix-darwin case). The stub has the framework `.tbd`s but no C++
   standard-library headers, so the shim is also given `-idirafter` zig's
   bundled libc++ headers (searched last, so a complete SDK's own `c++/v1`
-  always wins). `-F <sdk>/System/Library/Frameworks` feeds the MachO
-  linker's framework search (which ignores `--sysroot`), and `link_libcpp`
-  supplies `-lc++`.
+  always wins). Compiled as `.mm` (Objective-C++) on macOS — clang's ObjC
+  front-end handles Apple framework headers that webview.h's `#if __APPLE__`
+  block pulls in; Linux/Windows use plain `.cpp`. `-F <sdk>/System/Library/Frameworks`
+  feeds the MachO linker's framework search (which ignores `--sysroot`),
+  `link_libcpp` supplies `-lc++`, and explicit `linkFramework("Foundation")`
+  covers ObjC runtime, CoreFoundation, dispatch, and all stdlib/C functions.
 - Window: 1100×800, resizable, title "dayzero", webview created with
   debug enabled (devtools).
 

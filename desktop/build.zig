@@ -122,7 +122,13 @@ fn addWebview(b: *std.Build, exe_mod: *std.Build.Module, target: std.Build.Resol
             try flags.append("-idirafter");
             try flags.append(try b.graph.zig_lib_directory.join(b.allocator, &.{ "libcxx", "include" }));
             exe_mod.addCSourceFile(.{ .file = b.path("src/webview_shim.mm"), .flags = flags.items });
+            // clang does not auto-link frameworks when driven via zig,
+            // so these must be wired up explicitly.  WebKit is the
+            // windowing surface; Foundation covers ObjC runtime,
+            // CoreFoundation, dispatch (libdispatch), and all the stdlib
+            // symbols (malloc/free/assert etc.) that the shim needs.
             exe_mod.linkFramework("WebKit", .{});
+            exe_mod.linkFramework("Foundation", .{});
         },
         .windows => {
             // Native Windows builds only; webview.h's built-in WebView2

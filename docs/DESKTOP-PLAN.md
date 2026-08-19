@@ -110,7 +110,11 @@ near-term sign of one. Options considered:
   compilation, `-idirafter <zig-lib>/libcxx/include` (zig's bundled
   libc++ headers, searched last, filling the stub's gap without ever
   shadowing a complete SDK's own `c++/v1`), and `link_libcpp` for `-lc++`
-  at link time
+  at link time — compiled as `.mm` (Objective-C++) so clang's front-end
+  handles Apple framework headers that webview.h's `#if __APPLE__` block
+  pulls in, and explicit `linkFramework("Foundation")` because zig doesn't
+  auto-link when driving clang; Foundation covers ObjC runtime,
+  CoreFoundation, dispatch, and all stdlib/C functions.
 
 The webview window itself was exercised under Xvfb: page loads, JS runs.
 On Linux it fails at database open ("Missing required OPFS APIs" — the
