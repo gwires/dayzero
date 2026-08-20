@@ -127,13 +127,13 @@ fn addWebview(b: *std.Build, exe_mod: *std.Build.Module, target: std.Build.Resol
                 .flags = flags.items,
                 .language = .objective_cpp,
             });
-            // The ObjC runtime is libobjc.A.dylib (no plain libobjc.tbd
-            // exists in the SDK). zig's -l search only tries lib<name>.tbd
-            // and lib<name>.dylib, so linkSystemLibrary("objc") silently
-            // fails. Pass the dylib by absolute path instead.
+            // The ObjC runtime ships as libobjc.A.tbd in the SDK (no plain
+            // libobjc.tbd). zig's -l search only tries lib<name>.{tbd,dylib},
+            // so linkSystemLibrary("objc") never matches. Pass the .tbd stub
+            // by absolute path instead.
             exe_mod.addObjectFile(.{
                 .cwd_relative = try std.fs.path.join(b.allocator, &.{
-                    sdk, "usr", "lib", "libobjc.A.dylib",
+                    sdk, "usr", "lib", "libobjc.A.tbd",
                 }),
             });
             exe_mod.linkFramework("WebKit", .{});
