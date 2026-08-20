@@ -97,20 +97,21 @@ fn addWebview(b: *std.Build, exe_mod: *std.Build.Module, target: std.Build.Resol
             const sdk = findMacosSdk(b) orelse @panic(
                 "no macOS SDK found: set SDKROOT, or install the Command Line Tools (xcode-select --install)",
             );
-            b.sysroot = sdk;
+            // Deliberately do NOT set b.sysroot. Forcing --sysroot reroutes
+            // zig's MachO libSystem/libc resolution so it locates the SDK's
+            // .tbd stubs without linking their symbols, leaving _malloc,
+            // _objc_msgSend, __Unwind_*, etc. undefined. With sysroot unset,
+            // zig's native SDK detection links libSystem cleanly (verified
+            // with a minimal link_libc probe). The compiler and linker are
+            // still pointed at the SDK explicitly below.
             exe_mod.addFrameworkPath(.{ .cwd_relative = try std.fs.path.join(b.allocator, &.{
                 sdk, "System", "Library", "Frameworks",
             }) });
-            // zig's MachO linker needs library search paths for -lobjc & co.
-            // Its own xcrun-based SDK detection resolves to the nix-store
-            // apple-sdk stub inside nix shells (no usr/lib), and setting
-            // --sysroot disables native path detection entirely. Note the
-            // sysroot-relative form: zig's CLI re-roots absolute -L paths
-            // under --sysroot (join(sysroot, path)), so "$sdk/usr/lib" here
-            // would be doubled and silently dropped. Resolved, the path
-            // points at the SDK's .tbd link stubs (libobjc.tbd,
-            // libSystem.tbd, libc++.tbd).
-            exe_mod.addLibraryPath(.{ .cwd_relative = "/usr/lib" });
+            // Library search path for -lobjc / -lc++. Absolute, and with no
+            // sysroot set it is used verbatim (not re-rooted).
+            exe_mod.addLibraryPath(.{ .cwd_relative = try std.fs.path.join(b.allocator, &.{
+                sdk, "usr", "lib",
+            }) });
             exe_mod.link_libcpp = true;
             exe_mod.addIncludePath(b.path("lib/webview"));
             var flags = std.ArrayList([]const u8).init(b.allocator);
