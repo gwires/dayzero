@@ -118,6 +118,11 @@ fn addWebview(b: *std.Build, exe_mod: *std.Build.Module, target: std.Build.Resol
             });
             exe_mod.linkFramework("WebKit", .{});
             exe_mod.linkFramework("Foundation", .{});
+            // libobjc is NOT re-exported by libSystem and the SDK ships it
+            // as libobjc.A.tbd (not libobjc.tbd), so zig's linkSystemLibrary
+            // can't find it. Pass -lobjc directly to ld64 which knows about
+            // the .A suffix convention.
+            exe.addLinkerFlag("-lobjc");
         },
         .windows => {
             // Native Windows builds only; webview.h's built-in WebView2
