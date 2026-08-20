@@ -127,9 +127,15 @@ fn addWebview(b: *std.Build, exe_mod: *std.Build.Module, target: std.Build.Resol
                 .flags = flags.items,
                 .language = .objective_cpp,
             });
-            // Apple's clang driver implicitly adds -lobjc for ObjC++ links;
-            // zig's does not, so wire it up explicitly.
-            exe_mod.linkSystemLibrary("objc", .{});
+            // The ObjC runtime is libobjc.A.dylib (no plain libobjc.tbd
+            // exists in the SDK). zig's -l search only tries lib<name>.tbd
+            // and lib<name>.dylib, so linkSystemLibrary("objc") silently
+            // fails. Pass the dylib by absolute path instead.
+            exe_mod.addObjectFile(.{
+                .cwd_relative = try std.fs.path.join(b.allocator, &.{
+                    sdk, "usr", "lib", "libobjc.A.dylib",
+                }),
+            });
             exe_mod.linkFramework("WebKit", .{});
             exe_mod.linkFramework("Foundation", .{});
         },
