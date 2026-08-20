@@ -101,14 +101,16 @@ fn addWebview(b: *std.Build, exe_mod: *std.Build.Module, target: std.Build.Resol
             exe_mod.addFrameworkPath(.{ .cwd_relative = try std.fs.path.join(b.allocator, &.{
                 sdk, "System", "Library", "Frameworks",
             }) });
-            // zig's MachO linker gets its library search paths from its own
-            // xcrun-based SDK detection, which inside nix shells resolves to
-            // the nix-store apple-sdk stub (no usr/lib) — leaving "searched
-            // paths: none" for -lobjc & co. Point it at the real SDK's .tbd
-            // link stubs explicitly.
-            exe_mod.addLibraryPath(.{ .cwd_relative = try std.fs.path.join(b.allocator, &.{
-                sdk, "usr", "lib",
-            }) });
+            // zig's MachO linker needs library search paths for -lobjc & co.
+            // Its own xcrun-based SDK detection resolves to the nix-store
+            // apple-sdk stub inside nix shells (no usr/lib), and setting
+            // --sysroot disables native path detection entirely. Note the
+            // sysroot-relative form: zig's CLI re-roots absolute -L paths
+            // under --sysroot (join(sysroot, path)), so "$sdk/usr/lib" here
+            // would be doubled and silently dropped. Resolved, the path
+            // points at the SDK's .tbd link stubs (libobjc.tbd,
+            // libSystem.tbd, libc++.tbd).
+            exe_mod.addLibraryPath(.{ .cwd_relative = "/usr/lib" });
             exe_mod.link_libcpp = true;
             exe_mod.addIncludePath(b.path("lib/webview"));
             var flags = std.ArrayList([]const u8).init(b.allocator);
