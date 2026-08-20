@@ -22,6 +22,16 @@ if [ "${DAYZERO_SKIP_WEB_BUILD:-}" != 1 ]; then
 fi
 
 echo "==> building the desktop shell (embeds app/build)"
-(cd "$repo_root/desktop" && zig build -Doptimize=ReleaseSafe)
+# On nix-darwin the devshell injects NIX_CFLAGS_COMPILE, CC, CXX, etc.
+# pointing at nix-store toolchain paths. zig picks these up and links
+# against nix's libc++/compiler-rt instead of the macOS SDK's, which
+# breaks ObjC runtime resolution (_objc_msgSend undefined). Clear them
+# so zig uses only the system SDK via its native detection.
+env -u NIX_CFLAGS_COMPILE \
+    -u NIX_LDFLAGS \
+    -u CC -u CXX -u CFLAGS -u CXXFLAGS -u LDFLAGS \
+    -u SDKROOT -u DEVELOPER_DIR \
+  bash -c 'cd "$0" && exec zig build -Doptimize=ReleaseSafe' \
+  "$repo_root/desktop"
 
 echo "==> done: $bin ($(du -h "$bin" | cut -f1))"
