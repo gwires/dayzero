@@ -97,25 +97,9 @@ fn addWebview(b: *std.Build, exe_mod: *std.Build.Module, target: std.Build.Resol
             const sdk = findMacosSdk(b) orelse @panic(
                 "no macOS SDK found: set SDKROOT, or install the Command Line Tools (xcode-select --install)",
             );
-            // Deliberately do NOT set b.sysroot. Forcing --sysroot reroutes
-            // zig's MachO libSystem/libc resolution so it locates the SDK's
-            // .tbd stubs without linking their symbols, leaving _malloc,
-            // _objc_msgSend, __Unwind_*, etc. undefined. With sysroot unset,
-            // zig's native SDK detection links libSystem cleanly (verified
-            // with a minimal link_libc probe). The compiler and linker are
-            // still pointed at the SDK explicitly below.
-            exe_mod.addFrameworkPath(.{ .cwd_relative = try std.fs.path.join(b.allocator, &.{
-                sdk, "System", "Library", "Frameworks",
-            }) });
-            // Library search path for -lobjc / -lc++. Absolute, and with no
-            // sysroot set it is used verbatim (not re-rooted).
-            exe_mod.addLibraryPath(.{ .cwd_relative = try std.fs.path.join(b.allocator, &.{
-                sdk, "usr", "lib",
-            }) });
+            b.sysroot = sdk;
             exe_mod.link_libcpp = true;
             exe_mod.addIncludePath(b.path("lib/webview"));
-            var flags = std.ArrayList([]const u8).init(b.allocator);
-            try flags.appendSlice(&.{ "-std=c++17", "-DWEBVIEW_STATIC", "-isysroot", sdk });
             // webview.h's Cocoa backend is written against the ObjC runtime,
             // and the macOS SDK's CF_ENUM macro expansion (enum X : T X;)
             // only parses in Objective-C++ mode: in plain C++ mode zig's
@@ -124,17 +108,8 @@ fn addWebview(b: *std.Build, exe_mod: *std.Build.Module, target: std.Build.Resol
             // declaration"). Force ObjC++ regardless of the .cpp extension.
             exe_mod.addCSourceFile(.{
                 .file = b.path("src/webview_shim.cpp"),
-                .flags = flags.items,
+                .flags = &.{ "-std=c++17", "-DWEBVIEW_STATIC" },
                 .language = .objective_cpp,
-            });
-            // The ObjC runtime ships as libobjc.A.tbd in the SDK (no plain
-            // libobjc.tbd). zig's -l search only tries lib<name>.{tbd,dylib},
-            // so linkSystemLibrary("objc") never matches. Pass the .tbd stub
-            // by absolute path instead.
-            exe_mod.addObjectFile(.{
-                .cwd_relative = try std.fs.path.join(b.allocator, &.{
-                    sdk, "usr", "lib", "libobjc.A.tbd",
-                }),
             });
             exe_mod.linkFramework("WebKit", .{});
             exe_mod.linkFramework("Foundation", .{});
