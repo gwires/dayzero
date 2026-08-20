@@ -97,32 +97,26 @@ fn addWebview(b: *std.Build, exe_mod: *std.Build.Module, target: std.Build.Resol
             const sdk = findMacosSdk(b) orelse @panic(
                 "no macOS SDK found: set SDKROOT, or install the Command Line Tools (xcode-select --install)",
             );
-            // Do NOT set b.sysroot — it breaks zig's native libSystem/libobjc
-            // resolution on macOS 26. Framework search still needs an explicit
-            // -F path since native detection doesn't cover frameworks.
+            // Compile the shim with system clang++ (like the Linux path).
+            // zig's own clang doesn't auto-link libobjc for ObjC++ code,
+            // and the SDK ships it as libobjc.A.tbd which zig's library
+            // search can't find. System clang++ handles all of this.
+            const shim = b.addSystemCommand(&.{"clang++"});
+            shim.addArgs(&.{ "-std=c++17", "-fPIC", "-DWEBVIEW_STATIC", "-c" });
+            shim.addArg("-isysroot");
+            shim.addArg(sdk);
+            shim.addArg("-I");
+            shim.addArg(b.path("lib/webview").getPath(b));
+            shim.addFileArg(b.path("src/webview_shim.cpp"));
+            shim.addArg("-o");
+            exe_mod.addObjectFile(shim.addOutputFileArg("webview_shim.o"));
+
+            exe_mod.link_libcpp = true;
             exe_mod.addFrameworkPath(.{ .cwd_relative = try std.fs.path.join(b.allocator, &.{
                 sdk, "System", "Library", "Frameworks",
             }) });
-            exe_mod.link_libcpp = true;
-            exe_mod.addIncludePath(b.path("lib/webview"));
-            // webview.h's Cocoa backend is written against the ObjC runtime,
-            // and the macOS SDK's CF_ENUM macro expansion (enum X : T X;)
-            // only parses in Objective-C++ mode: in plain C++ mode zig's
-            // clang rejects it ("non-defining declaration of enumeration with
-            // a fixed underlying type is only permitted as a standalone
-            // declaration"). Force ObjC++ regardless of the .cpp extension.
-            exe_mod.addCSourceFile(.{
-                .file = b.path("src/webview_shim.cpp"),
-                .flags = &.{ "-std=c++17", "-DWEBVIEW_STATIC" },
-                .language = .objective_cpp,
-            });
             exe_mod.linkFramework("WebKit", .{});
             exe_mod.linkFramework("Foundation", .{});
-            // libobjc is NOT re-exported by libSystem and the SDK ships it
-            // as libobjc.A.tbd (not libobjc.tbd), so zig's linkSystemLibrary
-            // can't find it. Pass -lobjc directly to ld64 which knows about
-            // the .A suffix convention.
-            exe.addLinkerFlag("-lobjc");
         },
         .windows => {
             // Native Windows builds only; webview.h's built-in WebView2
