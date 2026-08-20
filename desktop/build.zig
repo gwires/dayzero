@@ -98,6 +98,10 @@ fn addWebview(b: *std.Build, exe_mod: *std.Build.Module, target: std.Build.Resol
                 "no macOS SDK found: set SDKROOT, or install the Command Line Tools (xcode-select --install)",
             );
             b.sysroot = sdk;
+            // --sysroot does not affect framework search; add it explicitly.
+            exe_mod.addFrameworkPath(.{ .cwd_relative = try std.fs.path.join(b.allocator, &.{
+                sdk, "System", "Library", "Frameworks",
+            }) });
             exe_mod.link_libcpp = true;
             exe_mod.addIncludePath(b.path("lib/webview"));
             // webview.h's Cocoa backend is written against the ObjC runtime,
